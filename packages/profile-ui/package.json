@@ -1,0 +1,7 @@
+{
+  "name": "@conexao/profile-ui",
+  "private": true,
+  "version": "0.1.0",
+  "license": "GPL-3.0-only",
+  "description": "Card de perfil do Conexão (catálogo, tema e CSS), compartilhado entre launcher, painel e página pública."
+}

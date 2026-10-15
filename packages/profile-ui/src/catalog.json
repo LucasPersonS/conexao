@@ -1,0 +1,47 @@
+{
+  "fonts": [
+    { "id": "padrao", "name": "Padrão", "family": "Inter", "tier": "free" },
+    { "id": "pixel", "name": "Pixel", "family": "Silkscreen", "tier": "free" },
+    { "id": "fofa", "name": "Fofa", "family": "Fredoka", "tier": "free" },
+    { "id": "manuscrita", "name": "Manuscrita", "family": "Caveat", "tier": "free" },
+    { "id": "arcade", "name": "Arcade", "family": "Press Start 2P", "tier": "premium" },
+    { "id": "elegante", "name": "Elegante", "family": "Cinzel", "tier": "premium" },
+    { "id": "futurista", "name": "Futurista", "family": "Orbitron", "tier": "premium" },
+    { "id": "retro", "name": "Retrô", "family": "Pacifico", "tier": "premium" },
+    { "id": "pirata", "name": "Pirata", "family": "Pirata One", "tier": "premium" }
+  ],
+  "frames": [
+    { "id": "nenhuma", "name": "Sem moldura", "tier": "free", "animated": false },
+    { "id": "simples", "name": "Simples", "tier": "free", "animated": false },
+    { "id": "duplo", "name": "Duplo", "tier": "free", "animated": false },
+    { "id": "pixel", "name": "Bloco", "tier": "free", "animated": false },
+    { "id": "brilho", "name": "Brilho", "tier": "free", "animated": true },
+    { "id": "arco-iris", "name": "Arco-íris", "tier": "premium", "animated": true },
+    { "id": "neon", "name": "Neon", "tier": "premium", "animated": true },
+    { "id": "estrelas", "name": "Estrelas", "tier": "premium", "animated": true },
+    { "id": "coracoes", "name": "Corações", "tier": "premium", "animated": true },
+    { "id": "petalas", "name": "Pétalas", "tier": "premium", "animated": true },
+    { "id": "chamas", "name": "Chamas", "tier": "premium", "animated": true },
+    { "id": "orbita", "name": "Órbita", "tier": "premium", "animated": true }
+  ],
+  "name_effects": [
+    { "id": "nenhum", "name": "Nenhum", "tier": "free" },
+    { "id": "gradiente", "name": "Gradiente", "tier": "free" },
+    { "id": "brilho", "name": "Reflexo", "tier": "premium" },
+    { "id": "arco-iris", "name": "Arco-íris", "tier": "premium" },
+    { "id": "glitch", "name": "Glitch", "tier": "premium" },
+    { "id": "onda", "name": "Onda", "tier": "premium" }
+  ],
+  "gradients": [
+    { "id": "conexao", "name": "Conexão", "colors": ["#0a0f11", "#2a4a10", "#b7fe00"], "angle": 160 },
+    { "id": "neon", "name": "Neon", "colors": ["#b7fe00", "#e4fa00"], "angle": 135 },
+    { "id": "ceu", "name": "Céu", "colors": ["#70b9f6", "#cde6ff"], "angle": 160 },
+    { "id": "aurora", "name": "Aurora", "colors": ["#43e97b", "#38f9d7", "#3a7bd5"], "angle": 135 },
+    { "id": "por-do-sol", "name": "Pôr do sol", "colors": ["#ff9a8b", "#ff6a88", "#ff99ac"], "angle": 120 },
+    { "id": "galaxia", "name": "Galáxia", "colors": ["#0f0c29", "#302b63", "#24243e"], "angle": 160 },
+    { "id": "algodao-doce", "name": "Algodão-doce", "colors": ["#fbc2eb", "#a6c1ee"], "angle": 135 },
+    { "id": "floresta", "name": "Floresta", "colors": ["#134e5e", "#71b280"], "angle": 150 },
+    { "id": "lava", "name": "Lava", "colors": ["#f12711", "#f5af19"], "angle": 135 },
+    { "id": "noite", "name": "Noite", "colors": ["#0a0f11", "#13262a", "#1f3a30"], "angle": 160 }
+  ]
+}

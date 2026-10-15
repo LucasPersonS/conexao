@@ -1,0 +1,14 @@
+# Ajustes para rodar a stack de PRODUÇÃO no seu PC (ver docs/rodar-como-producao.md).
+# Uso: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+services:
+  api:
+    # O launcher só confia em certificados públicos, então ele fala com a API direto
+    # pela porta 8080 (sem o HTTPS local do Caddy).
+    ports: ["8080:8080"]
+    environment:
+      # Endereço usado nos links de arquivos e no aviso do Mercado Pago.
+      # Para testar o webhook, troque pelo endereço do túnel (passo 9).
+      CONEXAO_PUBLIC_URL: ${CONEXAO_PUBLIC_URL:-http://localhost:8080}
+      # Permite cadastrar servidor Minecraft em localhost / rede local.
+      CONEXAO_ALLOW_PRIVATE_PING: "true"
+      RUST_LOG: conexao_api=debug,tower_http=info

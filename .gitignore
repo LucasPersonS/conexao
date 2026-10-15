@@ -1,0 +1,21 @@
+/target
+node_modules/
+apps/launcher/dist/
+apps/launcher/src-tauri/gen/
+vendor/theseus/java/build/
+vendor/theseus/java/.gradle/
+deploy/.env
+apps/api/.env
+data/
+*.log
+.sync/
+apps/panel/dist/
+apps/launcher/src-tauri/tauri.signing.conf.json
+# Chave privada do atualizador (npx tauri signer generate): nunca no Git
+*.key
+*.key.pub
+backups/
+deploy/CHAVE_PUBLICA_LAUNCHER.txt
+deploy/rclone.conf
+Claude outputs/
+*.tar.gz

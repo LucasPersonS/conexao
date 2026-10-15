@@ -1,0 +1,139 @@
+# Conexão na VPS: API + PostgreSQL + Caddy (HTTPS automático e CDN de arquivos).
+# Uso: cp .env.example .env && docker compose up -d --build
+# Logs dos contêineres com tamanho máximo (3 arquivos de 10 MB por serviço): não lotam o disco.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      # Nome do banco e usuário: "conexao" por padrão. Um banco criado antes da troca de nome
+      # continua como "central" (ver POSTGRES_DB/POSTGRES_USER no .env).
+      POSTGRES_DB: ${POSTGRES_DB:-conexao}
+      POSTGRES_USER: ${POSTGRES_USER:-conexao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-conexao}"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-conexao}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB:-conexao}
+      CONEXAO_JWT_SECRET: ${CONEXAO_JWT_SECRET:?defina CONEXAO_JWT_SECRET no .env}
+      CONEXAO_STAFF_TOKEN: ${CONEXAO_STAFF_TOKEN:-}
+      CONEXAO_STAFF_UUIDS: ${CONEXAO_STAFF_UUIDS:-}
+      CONEXAO_SIGNING_KEY: ${CONEXAO_SIGNING_KEY:-}
+      CONEXAO_PUBLIC_URL: https://${CONEXAO_DOMAIN}
+      CONEXAO_PANEL_URL: https://${CONEXAO_PANEL_DOMAIN}
+      CONEXAO_SERVER_QUOTA_MB: ${CONEXAO_SERVER_QUOTA_MB:-300}
+      CONEXAO_FEATURED_QUOTA_MB: ${CONEXAO_FEATURED_QUOTA_MB:-1024}
+      CONEXAO_CORS_ORIGINS: ${CONEXAO_CORS_ORIGINS:-}
+      CONEXAO_PREMIUM_ENFORCED: ${CONEXAO_PREMIUM_ENFORCED:-false}
+      CONEXAO_PIONEER_UNTIL: ${CONEXAO_PIONEER_UNTIL:-}
+      CONEXAO_BLOCKED_WORDS_FILE: ${CONEXAO_BLOCKED_WORDS_FILE:-}
+      CONEXAO_MP_ACCESS_TOKEN: ${CONEXAO_MP_ACCESS_TOKEN:-}
+      CONEXAO_MP_WEBHOOK_SECRET: ${CONEXAO_MP_WEBHOOK_SECRET:-}
+      CONEXAO_FEATURED_PLANS: ${CONEXAO_FEATURED_PLANS:-7:29.90,15:49.90,30:89.90}
+      CONEXAO_MAX_UPLOAD_MB: ${CONEXAO_MAX_UPLOAD_MB:-100}
+      CONEXAO_MAX_PENDING_SERVERS: ${CONEXAO_MAX_PENDING_SERVERS:-3}
+      CONEXAO_DOWNLOAD_URL: ${CONEXAO_DOWNLOAD_URL:-}
+      # Monitoramento (docs/monitoramento.md)
+      CONEXAO_ALERT_WEBHOOK: ${CONEXAO_ALERT_WEBHOOK:-}
+      CONEXAO_DISK_WARN_PERCENT: ${CONEXAO_DISK_WARN_PERCENT:-85}
+      CONEXAO_DISK_ALERT_PERCENT: ${CONEXAO_DISK_ALERT_PERCENT:-90}
+      CONEXAO_BACKUP_DIR: /backups/db
+      RUST_LOG: conexao_api=info,tower_http=info
+    volumes:
+      - files:/data
+      # Só leitura: a API confere a idade do último backup e avisa se atrasar.
+      - ./backups:/backups:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Backup diário do banco em ./backups/db (14 dias). Copie essa pasta para fora da VPS:
+  # veja o serviço "offsite" abaixo ou docs/backup.md.
+  backup:
+    image: postgres:17
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-conexao}
+      PGDATABASE: ${POSTGRES_DB:-conexao}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-6}
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ./backups:/backups
+
+  # Cópia para fora da VPS (Backblaze B2, S3, Google Drive...) com rclone, todo dia.
+  # Ligue com: docker compose --profile offsite up -d   (configure ./rclone.conf antes)
+  offsite:
+    image: rclone/rclone:latest
+    profiles: ["offsite"]
+    restart: unless-stopped
+    logging: *logging
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          if rclone copy /backups "$${RCLONE_REMOTE}/backups" --max-age 3d &&
+             rclone copy /files "$${RCLONE_REMOTE}/files"; then
+            echo "cópia externa ok: $$(date -u)"
+          else
+            echo "ERRO na cópia externa: $$(date -u)" >&2
+          fi
+          sleep 86400
+        done
+    environment:
+      RCLONE_REMOTE: ${RCLONE_REMOTE:-backup:conexao}
+    volumes:
+      - ./rclone.conf:/config/rclone/rclone.conf:ro
+      - ./backups:/backups:ro
+      - files:/files:ro
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    logging: *logging
+    depends_on: [api]
+    ports: ["80:80", "443:443"]
+    environment:
+      CONEXAO_DOMAIN: ${CONEXAO_DOMAIN:?defina CONEXAO_DOMAIN no .env}
+      CONEXAO_PANEL_DOMAIN: ${CONEXAO_PANEL_DOMAIN:?defina CONEXAO_PANEL_DOMAIN no .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../apps/panel/dist:/srv/panel:ro
+      - files:/srv/conexao:ro
+      - caddy:/data
+
+volumes:
+  pgdata:
+  files:
+  caddy:

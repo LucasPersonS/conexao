@@ -1,0 +1,67 @@
+# Cabeçalhos de segurança comuns aos dois domínios.
+(seguranca) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
+}
+
+# Conteúdo enviado por usuários: nunca é executado nem aberto como página no nosso domínio.
+(arquivo_inerte) {
+	header Content-Security-Policy "default-src 'none'; sandbox"
+	header X-Frame-Options "DENY"
+}
+
+{$CONEXAO_DOMAIN} {
+	encode zstd gzip
+	import seguranca
+
+	# Arquivos dos modpacks servidos direto do disco, com cache longo
+	# (o nome é o SHA-1, então o conteúdo nunca muda). Sempre como download binário:
+	# um HTML enviado como "mod" não abre como página no domínio da API.
+	handle /files/* {
+		root * /srv/conexao
+		import arquivo_inerte
+		header Cache-Control "public, max-age=31536000, immutable"
+		header >Content-Type "application/octet-stream"
+		header Content-Disposition "attachment"
+		file_server
+	}
+
+	# Ícones e banners enviados pelo painel (nome = SHA-1, nunca muda; a API regrava a imagem)
+	handle /images/* {
+		root * /srv/conexao
+		import arquivo_inerte
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Atualização automática do launcher (latest.json + instaladores)
+	handle /launcher/* {
+		root * /srv/conexao
+		import arquivo_inerte
+		header /launcher/latest.json Cache-Control "no-cache"
+		file_server
+	}
+
+	handle {
+		header X-Frame-Options "DENY"
+		reverse_proxy api:8080
+	}
+}
+
+# Painel web (build estático de apps/panel: npm run build)
+{$CONEXAO_PANEL_DOMAIN} {
+	encode zstd gzip
+	import seguranca
+	header {
+		X-Frame-Options "DENY"
+		# Só scripts do próprio painel; fontes do Google para o card de perfil; a API no domínio dela.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://{$CONEXAO_DOMAIN}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+	}
+	root * /srv/panel
+	file_server
+}

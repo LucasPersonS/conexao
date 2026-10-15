@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Só leitura por padrão; o job do instalador pede escrita para criar a release.
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dependências do Tauri (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Frontend do launcher
+        working-directory: apps/launcher
+        run: npm ci && npm run build
+      - name: Painel web
+        working-directory: apps/panel
+        env:
+          VITE_CONEXAO_API_URL: ${{ vars.CONEXAO_API_URL || 'https://api.ci.invalid' }}
+        run: npm ci && npm run build
+      - run: cargo clippy --workspace --exclude theseus --all-targets -- -D warnings
+      - run: cargo test -p conexao-types -p conexao-pack -p conexao-api -p conexao-agent -p conexao-launcher
+
+  companion:
+    name: Conexão Companion (NeoForge 1.21.1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Build
+        working-directory: companion
+        env:
+          CONEXAO_API_URL: ${{ vars.CONEXAO_API_URL }}
+        run: gradle build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conexao-companion
+          path: companion/build/libs/*.jar
+
+  launcher-release:
+    name: Instalador Windows (release)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: Swatinem/rust-cache@v2
+      - working-directory: apps/launcher
+        run: npm ci
+      # Nada de instalador de produção com chave faltando ou de exemplo.
+      - name: Conferir chaves e variáveis
+        shell: bash
+        env:
+          CONEXAO_API_URL: ${{ vars.CONEXAO_API_URL }}
+          CONEXAO_MANIFEST_PUBKEY: ${{ vars.CONEXAO_MANIFEST_PUBKEY }}
+          HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          fail=0
+          if grep -q "COLE_AQUI" apps/launcher/src-tauri/tauri.release.conf.json; then
+            echo "::error::Cole a chave pública do atualizador em tauri.release.conf.json (npx tauri signer generate)"; fail=1
+          fi
+          if grep -q "api.conexao.gg" apps/launcher/src-tauri/tauri.release.conf.json; then
+            echo "::error::Troque o endereço de exemplo api.conexao.gg pelo domínio real em tauri.release.conf.json"; fail=1
+          fi
+          case "$CONEXAO_API_URL" in https://*) ;; *) echo "::error::Variável CONEXAO_API_URL ausente ou sem https"; fail=1;; esac
+          [ -n "$CONEXAO_MANIFEST_PUBKEY" ] || { echo "::error::Variável CONEXAO_MANIFEST_PUBKEY ausente"; fail=1; }
+          [ "$HAS_UPDATER_KEY" = "true" ] || { echo "::error::Segredo TAURI_SIGNING_PRIVATE_KEY ausente"; fail=1; }
+          exit $fail
+      # Assinatura de código do Windows (Azure Trusted Signing). Sem ela o SmartScreen bloqueia
+      # o instalador; para um beta fechado, crie a variável ALLOW_UNSIGNED_INSTALLER=true.
+      - name: Assinatura de código (Windows)
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          ALLOW_UNSIGNED: ${{ vars.ALLOW_UNSIGNED_INSTALLER }}
+        run: |
+          conf=apps/launcher/src-tauri/tauri.signing.conf.json
+          if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$SIGNING_ENDPOINT" ]; then
+            cargo install trusted-signing-cli --locked
+            printf '{"bundle":{"windows":{"signCommand":"trusted-signing-cli -e %s -a %s -c %s -d Conexao %%1"}}}' \
+              "$SIGNING_ENDPOINT" "$SIGNING_ACCOUNT" "$SIGNING_PROFILE" > "$conf"
+          elif [ "$ALLOW_UNSIGNED" = "true" ]; then
+            echo "::warning::Instalador SEM assinatura de código (só para beta fechado)."
+            echo '{}' > "$conf"
+          else
+            echo "::error::Configure a assinatura de código (segredos AZURE_* e variáveis AZURE_SIGNING_*) ou ALLOW_UNSIGNED_INSTALLER=true para um beta."
+            exit 1
+          fi
+      # Gera o instalador assinado, o .sig e o latest.json da atualização automática.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          CONEXAO_API_URL: ${{ vars.CONEXAO_API_URL }}
+          CONEXAO_MANIFEST_PUBKEY: ${{ vars.CONEXAO_MANIFEST_PUBKEY }}
+          CONEXAO_DISCORD_APP_ID: ${{ vars.CONEXAO_DISCORD_APP_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        with:
+          projectPath: apps/launcher
+          args: --config src-tauri/tauri.release.conf.json --config src-tauri/tauri.signing.conf.json
+          tagName: ${{ github.ref_name }}
+          releaseName: Conexão ${{ github.ref_name }}
+          releaseDraft: true
+          includeUpdaterJson: true

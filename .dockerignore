@@ -1,0 +1,19 @@
+# O build da API só precisa do código-fonte. Sem isto o Docker/Podman
+# envia a pasta target (≈16 GB) e os node_modules para o build.
+**/target
+**/node_modules
+**/dist
+apps/launcher/src-tauri/gen
+companion/**/build
+companion/**/.gradle
+.sync
+.git
+.github
+docs
+deploy/.env
+**/*.tar.gz
+apps/api/data
+**/data
+deploy/backups
+deploy/rclone.conf
+deploy/CHAVE_PUBLICA_LAUNCHER.txt

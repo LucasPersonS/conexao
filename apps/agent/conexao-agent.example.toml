@@ -1,0 +1,12 @@
+# Configuração do agente do Conexão. Copie para conexao-agent.toml ao lado do servidor.
+api_url = "wss://api.conexao.gg/v1/agent/connect"
+# Gerado pelo dono do servidor: POST /v1/servers/{slug}/agent/token
+token = "cagt_..."
+# Pasta do servidor Minecraft (onde ficam server.properties e whitelist.json)
+server_dir = "/opt/minecraft/paravexia"
+
+# Opcional, mas recomendado: recarrega a whitelist na hora, sem restart.
+# No server.properties: enable-rcon=true, rcon.port=25575, rcon.password=...
+[rcon]
+address = "127.0.0.1:25575"
+password = "troque-esta-senha"

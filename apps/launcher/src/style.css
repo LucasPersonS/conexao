@@ -1,0 +1,249 @@
+/* Identidade visual do Conexão
+ * Cores da marca (logo e banners em branding/): verde-lima #b7fe00, preto #0a0f11 e branco #f2f6ef.
+ * A interface é escura; o lima fica para ações, destaques e estados ativos.
+ * Títulos usam a Fredoka (arredondada e pesada, como o letreiro do logo); blocos de pixel e a
+ * grade de fundo vêm dos banners.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Marca */
+  --lime: #b7fe00;
+  --lime-hi: #cbff4a;
+  --lime-deep: #8fd400;
+  --lime-yellow: #e4fa00;
+  --lime-soft: rgba(183, 254, 0, 0.1);
+  --lime-line: rgba(183, 254, 0, 0.38);
+  --lime-glow: 0 0 0 1px rgba(183, 254, 0, 0.45), 0 10px 30px rgba(183, 254, 0, 0.18);
+  --ink: #0a0f11;
+  --white: #f2f6ef;
+
+  /* Aliases antigos (componentes e perfil usam estes nomes) */
+  --brand: var(--lime);
+  --brand-white: var(--white);
+  --brand-light: var(--lime-soft);
+  --brand-strong: var(--lime);
+
+  /* Superfícies */
+  --bg: #0a0f11;
+  --bg-soft: #0e1518;
+  --bg-raised: #121a1d;
+  --bg-card: #131c1f;
+  --bg-hover: #1a2629;
+  --bg-input: #0c1315;
+  --line: #213034;
+  --line-strong: #2d4146;
+
+  /* Texto */
+  --text: var(--white);
+  --text-dim: #a3b1ad;
+  --text-faint: #6a7a76;
+  --accent: var(--lime);
+  --accent-ink: var(--ink);
+
+  /* Estados */
+  --good: #5fe38a;
+  --good-bg: rgba(95, 227, 138, 0.12);
+  --bad: #ff6464;
+  --bad-bg: rgba(255, 100, 100, 0.12);
+  --bad-line: rgba(255, 100, 100, 0.35);
+  --warn: #ffc94a;
+  --warn-bg: rgba(255, 201, 74, 0.12);
+
+  /* Sombras e véus sobre imagens */
+  --shade: 6, 10, 11;
+  --radius: 14px;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 18px 50px rgba(0, 0, 0, 0.55);
+
+  --font-display: 'Fredoka', 'Inter', system-ui, sans-serif;
+  --font-pixel: 'Silkscreen', 'Inter', monospace;
+
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  user-select: none;
+}
+
+::selection {
+  background: var(--lime);
+  color: var(--ink);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.005em;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-weight: 600;
+  background: var(--bg-hover);
+  border: 1px solid var(--line);
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+
+.btn:hover:not(:disabled) {
+  background: #213034;
+  border-color: var(--line-strong);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--lime);
+  border-color: var(--lime);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--lime-hi);
+  border-color: var(--lime-hi);
+  box-shadow: var(--lime-glow);
+}
+
+.btn-primary:disabled {
+  opacity: 1;
+  background: var(--lime-soft);
+  border-color: rgba(183, 254, 0, 0.2);
+  color: rgba(183, 254, 0, 0.55);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+
+.dot.on {
+  background: var(--lime);
+  box-shadow: 0 0 0 3px rgba(183, 254, 0, 0.16), 0 0 10px rgba(183, 254, 0, 0.6);
+}
+
+/* Rótulo pequeno em pixel (como os blocos do logo) */
+.eyebrow {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--lime);
+}
+
+/* Fundo com a grade dos banners do Conexão */
+.grid-bg {
+  background-image:
+    radial-gradient(900px 380px at 80% -80px, rgba(183, 254, 0, 0.09), transparent 70%),
+    linear-gradient(rgba(183, 254, 0, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(183, 254, 0, 0.035) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #243438;
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #36504f;
+}
+
+/* Modo repouso (jogo aberto ou janela escondida): nenhuma animação roda. */
+html.resting *,
+html.resting *::before,
+html.resting *::after {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
