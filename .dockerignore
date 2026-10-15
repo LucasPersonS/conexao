@@ -17,3 +17,4 @@ apps/api/data
 deploy/backups
 deploy/rclone.conf
 deploy/CHAVE_PUBLICA_LAUNCHER.txt
+deploy/.github-token

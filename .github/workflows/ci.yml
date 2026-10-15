@@ -146,5 +146,5 @@ jobs:
           args: --config src-tauri/tauri.release.conf.json --config src-tauri/tauri.signing.conf.json
           tagName: ${{ github.ref_name }}
           releaseName: Conexão ${{ github.ref_name }}
-          releaseDraft: true
+          releaseDraft: false
           includeUpdaterJson: true

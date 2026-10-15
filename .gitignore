@@ -17,5 +17,4 @@ apps/launcher/src-tauri/tauri.signing.conf.json
 backups/
 deploy/CHAVE_PUBLICA_LAUNCHER.txt
 deploy/rclone.conf
-Claude outputs/
-*.tar.gz
+deploy/.github-token
