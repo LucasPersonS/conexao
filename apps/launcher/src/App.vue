@@ -6,6 +6,7 @@ import Onboarding from './components/Onboarding.vue'
 import PanelPairing from './components/PanelPairing.vue'
 import TitleBar from './components/TitleBar.vue'
 import TopNav from './components/TopNav.vue'
+import UpdateToast from './components/UpdateToast.vue'
 import logo from './assets/logo.png'
 import { api, errorMessage, type Account, type MyRoles } from './lib/api'
 import { prefs } from './lib/prefs'
@@ -23,8 +24,6 @@ const roles = ref<MyRoles | null>(null)
 const loginBusy = ref(false)
 const loginError = ref<string | null>(null)
 const pairing = ref(false)
-const update = ref<{ version: string; notes: string | null } | null>(null)
-const updating = ref(false)
 const content = ref<HTMLElement | null>(null)
 
 const current = computed(() => findServer(store.slug))
@@ -75,16 +74,6 @@ async function copyToken() {
   }
 }
 
-async function installUpdate() {
-  updating.value = true
-  try {
-    await api.installUpdate()
-  } catch (error) {
-    store.error = errorMessage(error)
-    updating.value = false
-  }
-}
-
 onMounted(async () => {
   initActivity()
   listen<string>('invite', (event) => {
@@ -102,7 +91,6 @@ onMounted(async () => {
   } finally {
     ready.value = true
   }
-  api.checkUpdate().then((u) => (update.value = u)).catch(() => {})
   // Lista atualizada a cada minuto, só com o launcher em uso (em repouso não gasta nada).
   let lastLoad = Date.now()
   const refreshList = () => {
@@ -118,12 +106,6 @@ onMounted(async () => {
 <template>
   <div class="shell">
     <TitleBar />
-    <div v-if="update" class="update">
-      <span>Nova versão do Conexão disponível: <strong>{{ update.version }}</strong></span>
-      <button class="btn btn-primary small" :disabled="updating" @click="installUpdate">
-        {{ updating ? 'Atualizando…' : 'Atualizar e reiniciar' }}
-      </button>
-    </div>
     <div v-if="!ready" class="splash"><img :src="logo" alt="" />Carregando…</div>
     <LoginGate v-else-if="!account" :busy="loginBusy" :error="loginError" @login="login" />
     <template v-else>
@@ -147,6 +129,7 @@ onMounted(async () => {
         <div v-if="store.toast" class="toast" role="status">{{ store.toast }}</div>
       </Transition>
     </template>
+    <UpdateToast />
   </div>
 </template>
 
@@ -155,27 +138,6 @@ onMounted(async () => {
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.update {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 8px 16px;
-  background: linear-gradient(90deg, rgba(183, 254, 0, 0.16), rgba(183, 254, 0, 0.06));
-  border-bottom: 1px solid var(--lime-line);
-  font-size: 14px;
-}
-
-.update strong {
-  color: var(--lime);
-}
-
-.update .small {
-  height: 30px;
-  padding: 0 14px;
-  font-size: 13px;
 }
 
 .splash {
