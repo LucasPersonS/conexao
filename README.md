@@ -17,6 +17,7 @@ do Conexão aplica a whitelist no servidor em tempo real.
 apps/
   launcher/         App desktop: Tauri 2 (Rust) + Vue 3
   panel/            Painel web dos administradores (Vue 3)
+  site/             Site público com a página de download (HTML estático, sem build)
   api/              API central (axum + PostgreSQL)
   agent/            Agente que roda ao lado do servidor Minecraft (whitelist + RCON)
   publish/          conexao-publish: publica uma versão do modpack pela linha de comando
@@ -27,7 +28,7 @@ packages/
   profile-ui/       Card de perfil compartilhado (launcher, painel e página /u/<nick>)
 vendor/             Código do Modrinth reutilizado (theseus, daedalus e dependências)
 branding/           Logo, ícones, letreiro e banner do Conexão
-deploy/             docker-compose para a VPS (API + PostgreSQL + Caddy)
+deploy/             docker-compose para a VPS (API + PostgreSQL + Caddy: site, API e painel)
 ```
 
 ## Como as peças conversam

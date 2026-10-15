@@ -127,9 +127,11 @@ services:
     environment:
       CONEXAO_DOMAIN: ${CONEXAO_DOMAIN:?defina CONEXAO_DOMAIN no .env}
       CONEXAO_PANEL_DOMAIN: ${CONEXAO_PANEL_DOMAIN:?defina CONEXAO_PANEL_DOMAIN no .env}
+      CONEXAO_SITE_DOMAIN: ${CONEXAO_SITE_DOMAIN:?defina CONEXAO_SITE_DOMAIN no .env (ex. conexaosmps.com.br)}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../apps/panel/dist:/srv/panel:ro
+      - ../apps/site:/srv/site:ro
       - files:/srv/conexao:ro
       - caddy:/data
 

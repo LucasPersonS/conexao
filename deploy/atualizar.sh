@@ -5,7 +5,8 @@
 #
 # O que faz:
 #   1. baixa o código mais novo da branch main do GitHub;
-#   2. gera de novo o painel web e a imagem da API e reinicia (só o que mudou);
+#   2. gera de novo o painel web e a imagem da API e reinicia (só o que mudou;
+#      o site público em apps/site é estático e entra no ar direto);
 #   3. baixa o instalador do último release publicado e ajusta o latest.json para
 #      apontar para https://api.<domínio>/launcher/ (o /baixar e a atualização
 #      automática do launcher passam a entregar a versão nova);
@@ -72,6 +73,14 @@ if mudou apps/api Cargo.toml Cargo.lock deploy/Dockerfile.api; then
   DOCKER_BUILDKIT=1 docker compose build api
 else
   echo "   API sem mudanças"
+fi
+
+# Site público (apps/site) no domínio principal: instalações antigas não têm a variável.
+if ! grep -qE '^CONEXAO_SITE_DOMAIN=.' .env; then
+  SITE_DOMAIN="${API_DOMAIN#api.}"
+  echo "   CONEXAO_SITE_DOMAIN=$SITE_DOMAIN (adicionado ao .env)"
+  sed -i '/^CONEXAO_SITE_DOMAIN=/d' .env
+  printf '\nCONEXAO_SITE_DOMAIN=%s\n' "$SITE_DOMAIN" >> .env
 fi
 
 passo "Reiniciando os serviços"

@@ -1,4 +1,4 @@
-# Cabeçalhos de segurança comuns aos dois domínios.
+# Cabeçalhos de segurança comuns a todos os domínios.
 (seguranca) {
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -51,6 +51,46 @@
 		header X-Frame-Options "DENY"
 		reverse_proxy api:8080
 	}
+}
+
+# Site público (landing page do instalador): apps/site, HTML estático, sem build.
+{$CONEXAO_SITE_DOMAIN} {
+	encode zstd gzip
+	import seguranca
+	header {
+		X-Frame-Options "DENY"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
+	}
+
+	# conexaosmps.com.br/baixar -> o mesmo /baixar da API (instalador da versão mais nova).
+	redir /baixar https://{$CONEXAO_DOMAIN}/baixar 302
+
+	# latest.json e instaladores no mesmo domínio: o site mostra versão e tamanho sem CORS.
+	handle /launcher/* {
+		root * /srv/conexao
+		import arquivo_inerte
+		header /launcher/latest.json Cache-Control "no-cache"
+		file_server
+	}
+
+	handle {
+		root * /srv/site
+		header /assets/* Cache-Control "public, max-age=86400"
+		try_files {path} {path}.html
+		file_server
+	}
+
+	handle_errors 404 {
+		root * /srv/site
+		rewrite * /404.html
+		file_server
+	}
+}
+
+# www -> domínio principal
+www.{$CONEXAO_SITE_DOMAIN} {
+	import seguranca
+	redir https://{$CONEXAO_SITE_DOMAIN}{uri} permanent
 }
 
 # Painel web (build estático de apps/panel: npm run build)

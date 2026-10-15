@@ -10,7 +10,7 @@
 #   3. cria o deploy/.env com senhas e segredos novos (só se ainda não existir);
 #   4. gera o painel web e a imagem da API;
 #   5. gera a chave de assinatura dos modpacks e mostra a chave pública para o GitHub;
-#   6. sobe tudo (Caddy emite o HTTPS sozinho) e confere o /health.
+#   6. sobe tudo (site, API e painel; o Caddy emite o HTTPS sozinho) e confere o /health.
 # Pode rodar de novo sem medo: não recria o .env nem troca chaves que já existem.
 set -euo pipefail
 
@@ -80,19 +80,20 @@ if [ ! -f .env ]; then
 fi
 set_env CONEXAO_DOMAIN "$API"
 set_env CONEXAO_PANEL_DOMAIN "$PAINEL"
+set_env CONEXAO_SITE_DOMAIN "$DOMINIO_ASCII"
 set_env CONEXAO_CORS_ORIGINS "https://$PAINEL"
 [ -n "$STAFF_UUID" ] && set_env CONEXAO_STAFF_UUIDS "$STAFF_UUID"
 chmod 600 .env
 
 passo "Conferindo o DNS"
 IP_VPS=$(curl -fsS4 https://api.ipify.org || true)
-for nome in "$API" "$PAINEL"; do
+for nome in "$API" "$PAINEL" "$DOMINIO_ASCII" "www.$DOMINIO_ASCII"; do
   aponta=$(dig +short A "$nome" | tail -n1)
   if [ "$aponta" = "$IP_VPS" ]; then
     echo "   $nome -> $aponta (ok)"
   else
     echo "   $nome -> ${aponta:-nada} (esperado: $IP_VPS)"
-    echo "   Crie o registro A no Registro.br. Sem isso o HTTPS não é emitido; rode o script de novo depois."
+    echo "   Crie o registro A no seu DNS (Cloudflare: "Somente DNS", nuvem cinza). Sem isso o HTTPS não é emitido; rode o script de novo depois."
   fi
 done
 
@@ -129,6 +130,7 @@ docker compose ps
 
 passo "Pronto"
 cat <<FIM
+   Site:   https://$DOMINIO_ASCII
    API:    https://$API/health
    Painel: https://$PAINEL
    (o HTTPS pode levar 1 ou 2 minutos depois que o DNS estiver apontando)

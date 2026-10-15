@@ -16,6 +16,7 @@
 | Mudou | No seu PC | Na VPS |
 |---|---|---|
 | Painel ou API | `git push` | `bash /opt/conexao/deploy/atualizar.sh` |
+| Site (`apps/site`) | `git push` | `bash /opt/conexao/deploy/atualizar.sh` (é estático: entra no ar sem build) |
 | Launcher | aumente `version` em `apps/launcher/src-tauri/tauri.conf.json`, `git push`, `git tag v0.1.1`, `git push origin v0.1.1`, espere o Actions ficar verde | `bash /opt/conexao/deploy/atualizar.sh` |
 
 O script baixa a `main`, refaz só o que mudou (painel e/ou API), reinicia, baixa o último
