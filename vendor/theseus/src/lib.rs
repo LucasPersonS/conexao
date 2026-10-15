@@ -1,4 +1,4 @@
-/*!
+﻿/*!
 # Theseus
 
 Theseus is a library which provides utilities for launching minecraft, creating Modrinth mod packs,
@@ -6,6 +6,8 @@ and launching Modrinth mod packs
 */
 #![warn(unused_import_braces)]
 #![deny(unused_must_use)]
+// Conexão: código de terceiros (Modrinth). Lints novos do clippy não devem travar o CI.
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::restriction)]
 
 #[macro_use]
 mod util;
