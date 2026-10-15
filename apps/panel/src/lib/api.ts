@@ -379,6 +379,43 @@ export const api = {
   staffServers: () => request<Server[]>('GET', '/v1/staff/servers'),
   setApproval: (slug: string, approval: string) => request<unknown>('POST', `/v1/staff/servers/${slug}/approval`, { approval }),
   setFeatured: (slug: string, until: string | null) => request<unknown>('POST', `/v1/staff/servers/${slug}/featured`, { until }),
+  storage: () => request<StorageOverview>('GET', '/v1/staff/storage'),
+  storageServer: (slug: string) => request<ServerStorage>('GET', `/v1/staff/storage/servers/${slug}`),
+  deleteVersion: (slug: string, id: string) =>
+    request<{ deleted: string; files_freed: number; bytes_freed: number }>('DELETE', `/v1/staff/storage/servers/${slug}/versions/${id}`),
+  blockFile: (sha1: string, reason: string) =>
+    request<{ freed: number; affected_versions: string[] }>('POST', `/v1/staff/storage/files/${sha1}`, { reason }),
+  unblockFile: (sha1: string) => request<null>('DELETE', `/v1/staff/storage/files/${sha1}`),
+  runCleanup: () => request<{ versions: number; files: number; bytes: number; temporaries: number }>('POST', '/v1/staff/storage/cleanup'),
+}
+
+export interface ServerUsage {
+  slug: string
+  name: string
+  approval: Server['approval']
+  featured: boolean
+  versions: number
+  files: number
+  hosted_bytes: number
+  exclusive_bytes: number
+  current_bytes: number
+  uploaded_24h: number
+  last_published_at: string | null
+}
+
+export interface StorageOverview {
+  disk: { total: number; free: number; used_percent: number | null; alert_percent: number }
+  stored: { files: number; bytes: number }
+  unused: { files: number; bytes: number }
+  quota_bytes: number
+  featured_quota_bytes: number
+  servers: ServerUsage[]
+  blocked: { sha1: string; size: number; path: string; reason: string; blocked_by: string | null; created_at: string }[]
+}
+
+export interface ServerStorage {
+  versions: { id: string; version: string; published_at: string; channels: string[]; files: number; hosted_bytes: number }[]
+  files: { sha1: string; path: string; size: number; created_at: string; versions: string[]; other_servers: string[] }[]
 }
 
 export async function loadSession() {

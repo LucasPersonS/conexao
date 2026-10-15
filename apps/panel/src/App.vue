@@ -41,6 +41,7 @@ const ROLE: Record<string, string> = { owner: 'Dono', admin: 'Admin', moderator:
         <template v-if="session.user?.is_staff">
           <span class="label">Equipe Conexão</span>
           <RouterLink to="/equipe-conexao" class="nav">Aprovações e moderação</RouterLink>
+          <RouterLink to="/equipe-conexao/armazenamento" class="nav">Armazenamento</RouterLink>
         </template>
       </nav>
 
@@ -141,7 +142,7 @@ nav {
   background: var(--hover);
 }
 
-.nav.router-link-active {
+.nav.router-link-exact-active {
   background: var(--card);
   box-shadow: inset 3px 0 0 var(--lime), 0 0 0 1px var(--line);
 }

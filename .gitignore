@@ -2,6 +2,8 @@
 node_modules/
 apps/launcher/dist/
 apps/launcher/src-tauri/gen/
+apps/installer/dist/
+apps/installer/src-tauri/gen/
 vendor/theseus/java/build/
 vendor/theseus/java/.gradle/
 deploy/.env
@@ -18,4 +20,4 @@ backups/
 deploy/CHAVE_PUBLICA_LAUNCHER.txt
 deploy/rclone.conf
 deploy/.github-token
-"Claude outputs/" 
+Claude outputs/

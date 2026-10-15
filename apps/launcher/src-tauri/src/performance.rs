@@ -53,8 +53,17 @@ pub async fn system_memory_mb() -> u32 {
     theseus::jre::get_max_memory().await.map(|kib| u32::try_from(kib / 1024).unwrap_or(u32::MAX)).unwrap_or(8192)
 }
 
-/// Grava memória e flags na instância. Com as opções desligadas, a instância volta
-/// a usar as configurações globais (o valor manual da tela de Configurações).
+/// Argumentos finais com as otimizações ligadas: as flags do Conexão e depois as do
+/// jogador (a JVM usa a última ocorrência, então as do jogador prevalecem). Se o jogador
+/// escolheu outro coletor de memória (ZGC, Shenandoah…), as flags de G1 saem.
+pub fn optimized_args(custom: &[String]) -> Vec<String> {
+    let other_gc = custom.iter().any(|a| a.starts_with("-XX:+Use") && a.ends_with("GC") && a != "-XX:+UseG1GC");
+    let base = if other_gc { &[][..] } else { JVM_FLAGS };
+    base.iter().map(|f| (*f).to_string()).chain(custom.iter().cloned()).collect()
+}
+
+/// Grava memória, Java e flags na instância. Com as opções desligadas, a instância volta
+/// a usar as configurações globais (os valores da tela de Configurações).
 pub async fn apply(instance_id: &str, prefs: &LauncherPrefs) -> CmdResult<Option<u32>> {
     let dir = theseus::instance::get_full_path(instance_id).await?;
     let memory = if prefs.memory_auto {
@@ -62,13 +71,20 @@ pub async fn apply(instance_id: &str, prefs: &LauncherPrefs) -> CmdResult<Option
     } else {
         None
     };
-    let args = prefs.jvm_optimized.then(|| JVM_FLAGS.iter().map(|f| (*f).to_string()).collect::<Vec<_>>());
+    let args = if prefs.jvm_optimized {
+        let custom = theseus::settings::get().await?.extra_launch_args;
+        Some(optimized_args(&custom))
+    } else {
+        None
+    };
+    let java_path = prefs.java_path.clone().filter(|p| !p.trim().is_empty());
     theseus::instance::edit(
         instance_id,
         EditInstance {
             launch_overrides: Some(InstanceLaunchOverridesPatch {
                 memory: Some(memory.map(|maximum| MemorySettings { maximum })),
                 extra_launch_args: Some(args),
+                java_path: Some(java_path),
                 ..Default::default()
             }),
             ..Default::default()
@@ -92,5 +108,15 @@ mod tests {
         assert_eq!(recommended_memory(400, 8192), 4864);
         // 4 GB: 2 GB, o mínimo para modpacks
         assert_eq!(recommended_memory(150, 4096), 2048);
+    }
+
+    #[test]
+    fn custom_args_go_after_flags_and_other_gc_replaces_g1() {
+        let custom = vec!["-Xms2G".to_string()];
+        let args = optimized_args(&custom);
+        assert_eq!(args.len(), JVM_FLAGS.len() + 1);
+        assert_eq!(args.last().map(String::as_str), Some("-Xms2G"));
+        let zgc = vec!["-XX:+UseZGC".to_string()];
+        assert_eq!(optimized_args(&zgc), zgc);
     }
 }

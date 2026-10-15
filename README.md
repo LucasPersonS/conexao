@@ -16,6 +16,7 @@ do Conexão aplica a whitelist no servidor em tempo real.
 ```
 apps/
   launcher/         App desktop: Tauri 2 (Rust) + Vue 3
+  installer/        Instalador visual (Tauri 2 + Vue 3): baixa, confere e instala o launcher
   panel/            Painel web dos administradores (Vue 3)
   site/             Site público com a página de download (HTML estático, sem build)
   api/              API central (axum + PostgreSQL)

@@ -11,14 +11,27 @@ use crate::error::CmdResult;
 #[derive(Serialize)]
 pub struct UpdateInfo {
     pub version: String,
+    /// Versão instalada agora.
+    pub current: String,
     pub notes: Option<String>,
+}
+
+/// Evento `update-progress` enquanto a atualização baixa e instala.
+#[derive(Serialize, Clone)]
+#[cfg_attr(not(feature = "updater"), allow(dead_code))]
+pub struct UpdateProgress {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+    /// Download terminou; o instalador está rodando (o launcher vai fechar e reabrir).
+    pub installing: bool,
 }
 
 #[cfg(feature = "updater")]
 mod imp {
+    use tauri::Emitter;
     use tauri_plugin_updater::UpdaterExt;
 
-    use super::UpdateInfo;
+    use super::{UpdateInfo, UpdateProgress};
     use crate::error::{CmdError, CmdResult};
 
     fn err(error: impl std::fmt::Display) -> CmdError {
@@ -27,14 +40,37 @@ mod imp {
 
     pub async fn check(app: &tauri::AppHandle) -> CmdResult<Option<UpdateInfo>> {
         let update = app.updater().map_err(err)?.check().await.map_err(err)?;
-        Ok(update.map(|u| UpdateInfo { version: u.version.clone(), notes: u.body }))
+        Ok(update.map(|u| UpdateInfo { version: u.version.clone(), current: u.current_version.clone(), notes: u.body }))
     }
 
     pub async fn install(app: &tauri::AppHandle) -> CmdResult<()> {
         let Some(update) = app.updater().map_err(err)?.check().await.map_err(err)? else {
             return Ok(());
         };
-        update.download_and_install(|_, _| {}, || {}).await.map_err(err)?;
+        // Progresso para o aviso de atualização (no máximo ~8 vezes por segundo).
+        let mut downloaded: u64 = 0;
+        let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        let progress_app = app.clone();
+        let finished_app = app.clone();
+        update
+            .download_and_install(
+                move |chunk, total| {
+                    downloaded += chunk as u64;
+                    if last.elapsed() >= std::time::Duration::from_millis(120) {
+                        last = std::time::Instant::now();
+                        let _ = progress_app.emit("update-progress", UpdateProgress { downloaded, total, installing: false });
+                    }
+                },
+                move || {
+                    let _ = finished_app.emit(
+                        "update-progress",
+                        UpdateProgress { downloaded: 0, total: None, installing: true },
+                    );
+                },
+            )
+            .await
+            .map_err(err)?;
+        // No Windows o instalador fecha e reabre o launcher sozinho; nos outros, reinicia aqui.
         app.restart();
     }
 }

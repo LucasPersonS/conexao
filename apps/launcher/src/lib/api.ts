@@ -75,6 +75,14 @@ export interface MyRoles {
 export interface GameSettings {
   memory_mb: number
   fullscreen: boolean
+  resolution_width: number
+  resolution_height: number
+  jvm_args: string
+  env_vars: string
+  pre_launch: string
+  wrapper: string
+  post_exit: string
+  max_downloads: number
 }
 
 export interface LauncherPrefs {
@@ -83,13 +91,22 @@ export interface LauncherPrefs {
   minimize_on_play: boolean
   discord_presence: boolean
   notifications: boolean
+  java_path: string | null
 }
 
 export interface SettingsView extends GameSettings {
   system_memory_mb: number
   recommended_memory_mb: number
   launcher: LauncherPrefs
+  optimized_flags: string[]
   discord_available: boolean
+}
+
+export interface JavaInfo {
+  path: string
+  version: string
+  major: number
+  architecture: string
 }
 
 export interface ServerPost {
@@ -181,7 +198,7 @@ export const api = {
   publishToken: () => invoke<string>('publish_token'),
   approvePanel: (code: string) => invoke<void>('approve_panel', { code }),
   pairingInfo: (code: string) => invoke<PairingInfo>('pairing_info', { code }),
-  checkUpdate: () => invoke<{ version: string; notes: string | null } | null>('check_update'),
+  checkUpdate: () => invoke<UpdateInfo | null>('check_update'),
   installUpdate: () => invoke<void>('install_update'),
   progress: (slug: string) => invoke<PlayProgress>('play_progress', { slug }),
   installState: (slug: string) => invoke<InstallState>('install_state', { slug }),
@@ -194,4 +211,21 @@ export const api = {
   setReminder: (reminder: Reminder, enabled: boolean) => invoke<string[]>('set_reminder', { reminder, enabled }),
   reminders: () => invoke<string[]>('reminders'),
   openGameFolder: (slug: string) => invoke<void>('open_game_folder', { slug }),
+  openLauncherFolder: (kind: 'data' | 'logs') => invoke<void>('open_launcher_folder', { kind }),
+  listJava: () => invoke<JavaInfo[]>('list_java'),
+  testJava: (path: string) => invoke<JavaInfo>('test_java', { path }),
+}
+
+export interface UpdateInfo {
+  version: string
+  /** Versão instalada agora. */
+  current: string
+  notes: string | null
+}
+
+export interface UpdateProgress {
+  downloaded: number
+  total: number | null
+  /** Download terminou; o instalador está rodando (o launcher fecha e reabre). */
+  installing: boolean
 }

@@ -19,6 +19,8 @@ pub struct LauncherPrefs {
     pub discord_presence: bool,
     /// Notificações do sistema (vaga aberta, eventos lembrados).
     pub notifications: bool,
+    /// Java escolhido pelo jogador (vazio: o Conexão baixa o certo para cada versão).
+    pub java_path: Option<String>,
     /// Eventos que o jogador pediu para lembrar.
     pub reminders: Vec<Reminder>,
 }
@@ -31,6 +33,7 @@ impl Default for LauncherPrefs {
             minimize_on_play: true,
             discord_presence: true,
             notifications: true,
+            java_path: None,
             reminders: Vec::new(),
         }
     }

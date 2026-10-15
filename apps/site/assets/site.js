@@ -23,14 +23,19 @@
       meta.textContent = partes.join(' · ');
       var plat = data.platforms && (data.platforms['windows-x86_64'] || data.platforms['windows-x86_64-nsis']);
       var nome = plat && plat.url ? plat.url.split('/').pop() : '';
-      if (!/^[\w.-]+\.exe$/.test(nome)) return;
-      return fetch('/launcher/' + nome, { method: 'HEAD' }).then(function (r) {
-        var tamanho = Number(r.headers.get('content-length'));
-        if (r.ok && tamanho > 0) {
+      // O /baixar entrega o instalador visual quando ele existe; senão, o NSIS da versão.
+      var candidatos = ['Conexao-Instalador.exe'];
+      if (/^[\w.-]+\.exe$/.test(nome)) candidatos.push(nome);
+      function tamanhoDe(i) {
+        if (i >= candidatos.length) return;
+        return fetch('/launcher/' + candidatos[i], { method: 'HEAD', cache: 'no-cache' }).then(function (r) {
+          var tamanho = Number(r.headers.get('content-length'));
+          if (!r.ok || !(tamanho > 0)) return tamanhoDe(i + 1);
           partes.splice(1, 0, mb(tamanho));
           meta.textContent = partes.join(' · ');
-        }
-      });
+        });
+      }
+      return tamanhoDe(0);
     })
     .catch(function () { /* fica o texto padrão */ });
 

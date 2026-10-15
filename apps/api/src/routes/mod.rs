@@ -10,6 +10,7 @@ pub mod plan;
 pub mod posts;
 pub mod profiles;
 pub mod servers;
+pub mod storage_admin;
 pub mod versions;
 pub mod whitelist;
 
@@ -20,7 +21,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::{Router, middleware};
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
@@ -103,7 +104,12 @@ pub fn router(state: AppState) -> Router {
         .route("/files/{sha1}", put(files::upload).layer(DefaultBodyLimit::disable()))
         .route("/staff/servers", get(servers::staff_list))
         .route("/staff/servers/{slug}/approval", post(servers::set_approval))
-        .route("/staff/servers/{slug}/featured", post(servers::set_featured));
+        .route("/staff/servers/{slug}/featured", post(servers::set_featured))
+        .route("/staff/storage", get(storage_admin::overview))
+        .route("/staff/storage/cleanup", post(storage_admin::run_cleanup))
+        .route("/staff/storage/servers/{slug}", get(storage_admin::server_detail))
+        .route("/staff/storage/servers/{slug}/versions/{id}", delete(storage_admin::delete_version))
+        .route("/staff/storage/files/{sha1}", post(storage_admin::block_file).delete(storage_admin::unblock_file));
 
     Router::new()
         .route("/health", get(health))

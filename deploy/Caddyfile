@@ -44,6 +44,8 @@
 		root * /srv/conexao
 		import arquivo_inerte
 		header /launcher/latest.json Cache-Control "no-cache"
+		# Mesmo nome a cada versão: o navegador sempre confere se mudou.
+		header /launcher/Conexao-Instalador.exe Cache-Control "no-cache"
 		file_server
 	}
 
@@ -67,7 +69,7 @@
 	}
 	# Rodapé do perfil ("Baixe o Conexão") e qualquer outro caminho levam ao site.
 	handle /baixar {
-		redir https://{$CONEXAO_DOMAIN}/baixar 302
+		redir https://{$CONEXAO_DOMAIN}{uri} 302
 	}
 	handle {
 		redir https://{$CONEXAO_SITE_DOMAIN}/ 302
@@ -84,7 +86,7 @@
 	}
 
 	# conexaosmps.com.br/baixar -> o mesmo /baixar da API (instalador da versão mais nova).
-	redir /baixar https://{$CONEXAO_DOMAIN}/baixar 302
+	redir /baixar https://{$CONEXAO_DOMAIN}{uri} 302
 
 	# latest.json e instaladores no mesmo domínio: o site mostra versão e tamanho sem CORS.
 	handle /launcher/* {

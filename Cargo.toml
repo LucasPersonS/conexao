@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "apps/agent",
   "apps/api",
+  "apps/installer/src-tauri",
   "apps/launcher/src-tauri",
   "apps/publish",
   "crates/conexao-pack",

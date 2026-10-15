@@ -199,6 +199,16 @@ pub async fn upload(
         ));
     }
 
+    let blocked: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM blocked_files WHERE sha1 = $1)")
+        .bind(&sha1)
+        .fetch_one(&state.pool)
+        .await?;
+    if blocked {
+        return Err(ApiError::bad(
+            "Este arquivo foi removido pela equipe Conexão e não pode ser enviado de novo. Tire-o do modpack.",
+        ));
+    }
+
     let max_file = state.config.max_upload_bytes as u64;
     let limit = budget.map_or(max_file, |b| b.min(max_file));
     let declared: Option<u64> = headers

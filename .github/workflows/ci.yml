@@ -39,6 +39,9 @@ jobs:
       - name: Frontend do launcher
         working-directory: apps/launcher
         run: npm ci && npm run build
+      - name: Frontend do instalador
+        working-directory: apps/installer
+        run: npm ci && npm run build
       - name: Painel web
         working-directory: apps/panel
         env:
@@ -148,3 +151,27 @@ jobs:
           releaseName: Conexão ${{ github.ref_name }}
           releaseDraft: false
           includeUpdaterJson: true
+      # Instalador visual (apps/installer): baixa o NSIS acima pelo latest.json, confere a
+      # assinatura e instala. Vai no mesmo release; o atualizar.sh da VPS publica em /baixar.
+      - name: Instalador visual (Conexao-Instalador.exe)
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONEXAO_API_URL: ${{ vars.CONEXAO_API_URL }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        working-directory: apps/installer
+        run: |
+          npm ci
+          npx tauri build --no-bundle
+          cp ../../target/release/conexao-installer.exe Conexao-Instalador.exe
+          if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$SIGNING_ENDPOINT" ]; then
+            trusted-signing-cli -e "$SIGNING_ENDPOINT" -a "$SIGNING_ACCOUNT" -c "$SIGNING_PROFILE" -d Conexao Conexao-Instalador.exe
+          else
+            echo "::warning::Conexao-Instalador.exe SEM assinatura de código (só para beta fechado)."
+          fi
+          gh release upload "${{ github.ref_name }}" Conexao-Instalador.exe --clobber

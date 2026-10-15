@@ -1,0 +1,69 @@
+/* Instalador do Conexão — mesmos tokens do launcher (apps/launcher/src/style.css). */
+:root {
+  color-scheme: dark;
+  --lime: #b7fe00;
+  --lime-hi: #cbff4a;
+  --lime-deep: #8fd400;
+  --lime-yellow: #e4fa00;
+  --lime-soft: rgba(183, 254, 0, 0.1);
+  --lime-line: rgba(183, 254, 0, 0.38);
+  --ink: #0a0f11;
+  --white: #f2f6ef;
+  --bg: #0a0f11;
+  --bg-soft: #0e1518;
+  --bg-card: #131c1f;
+  --line: #213034;
+  --line-strong: #2d4146;
+  --text: var(--white);
+  --text-dim: #a3b1ad;
+  --text-faint: #6a7a76;
+  --bad: #ff6464;
+  --gradient: linear-gradient(135deg, var(--lime-yellow) 0%, var(--lime) 45%, var(--lime-deep) 100%);
+  --font-display: 'Fredoka', 'Inter', system-ui, sans-serif;
+  --font-pixel: 'Silkscreen', 'Inter', monospace;
+
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 0;
+  background: none;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -84,22 +84,33 @@ pub async fn collect(state: &AppState) -> eyre::Result<Report> {
             .bind(BATCH)
             .fetch_all(&state.pool)
             .await?;
+    let (files, bytes) = remove_if_unused(state, &candidates, GRACE_HOURS).await?;
+    report.files = files;
+    report.bytes = bytes;
+    report.temporaries = remove_old_temporaries(&state.config.storage_dir.join("tmp")).await;
+    Ok(report)
+}
+
+/// Apaga (banco e disco) os arquivos da lista que estão sem uso, com `grace_hours` de margem.
+/// Retorna quantos arquivos e bytes saíram.
+pub async fn remove_if_unused(state: &AppState, hashes: &[String], grace_hours: i32) -> eyre::Result<(u64, u64)> {
     let root = &state.config.storage_dir;
-    for sha1 in candidates {
-        if !storage::is_sha1(&sha1) {
+    let (mut files, mut bytes) = (0, 0);
+    for sha1 in hashes {
+        if !storage::is_sha1(sha1) {
             continue;
         }
         let mut tx = state.pool.begin().await?;
-        // Confere de novo dentro da transação: alguém pode ter usado o arquivo agora.
+        // Confere dentro da transação: alguém pode ter usado o arquivo agora.
         let size: Option<i64> = sqlx::query_scalar(&format!(
             "DELETE FROM stored_files sf WHERE sf.sha1 = $2 AND {UNUSED} RETURNING sf.size"
         ))
-        .bind(GRACE_HOURS)
-        .bind(&sha1)
+        .bind(grace_hours)
+        .bind(sha1)
         .fetch_optional(&mut *tx)
         .await?;
         let Some(size) = size else { continue };
-        match tokio::fs::remove_file(storage::file_path(root, &sha1)).await {
+        match tokio::fs::remove_file(storage::file_path(root, sha1)).await {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
@@ -109,12 +120,10 @@ pub async fn collect(state: &AppState) -> eyre::Result<Report> {
             }
         }
         tx.commit().await?;
-        report.files += 1;
-        report.bytes += u64::try_from(size).unwrap_or(0);
+        files += 1;
+        bytes += u64::try_from(size).unwrap_or(0);
     }
-
-    report.temporaries = remove_old_temporaries(&root.join("tmp")).await;
-    Ok(report)
+    Ok((files, bytes))
 }
 
 async fn remove_old_temporaries(dir: &std::path::Path) -> u64 {

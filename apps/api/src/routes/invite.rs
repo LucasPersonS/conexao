@@ -4,7 +4,7 @@
 //! quem clica vê o servidor e o botão "Abrir no Conexão" (`conexao://servidor/<slug>`),
 //! ou baixa o launcher se ainda não tiver.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 
@@ -161,12 +161,26 @@ h1 {{ margin:12px 0 4px; font-size:28px; }}
     )
 }
 
-/// Redireciona para o instalador mais recente (do `latest.json` publicado pelo CI).
-pub async fn download(State(state): State<AppState>) -> Response {
+/// Instalador visual (apps/installer): baixa a versão mais nova sozinho.
+pub const VISUAL_INSTALLER: &str = "Conexao-Instalador.exe";
+
+#[derive(serde::Deserialize)]
+pub struct DownloadQuery {
+    /// `?classico` = instalador NSIS direto, sem o instalador visual.
+    classico: Option<String>,
+}
+
+/// Redireciona para o instalador: o visual, se publicado; senão (ou com `?classico`) o NSIS
+/// mais recente do `latest.json` publicado pelo CI.
+pub async fn download(State(state): State<AppState>, Query(query): Query<DownloadQuery>) -> Response {
     if let Some(url) = &state.config.download_url {
         return Redirect::temporary(url).into_response();
     }
-    let latest = state.config.storage_dir.join("launcher").join("latest.json");
+    let dir = state.config.storage_dir.join("launcher");
+    if query.classico.is_none() && tokio::fs::try_exists(dir.join(VISUAL_INSTALLER)).await.unwrap_or(false) {
+        return Redirect::temporary(&format!("{}/launcher/{VISUAL_INSTALLER}", state.config.public_url)).into_response();
+    }
+    let latest = dir.join("latest.json");
     let url = tokio::fs::read(&latest)
         .await
         .ok()
