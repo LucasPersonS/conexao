@@ -47,9 +47,30 @@
 		file_server
 	}
 
+	# Perfis mudaram para o domínio próprio: links antigos continuam funcionando.
+	redir /u/* https://{$CONEXAO_PROFILE_DOMAIN}{uri} permanent
+
 	handle {
 		header X-Frame-Options "DENY"
 		reverse_proxy api:8080
+	}
+}
+
+# Páginas públicas de perfil: perfil.<domínio>/u/<nick> (geradas pela API).
+{$CONEXAO_PROFILE_DOMAIN} {
+	encode zstd gzip
+	import seguranca
+	header X-Frame-Options "DENY"
+
+	handle /u/* {
+		reverse_proxy api:8080
+	}
+	# Rodapé do perfil ("Baixe o Conexão") e qualquer outro caminho levam ao site.
+	handle /baixar {
+		redir https://{$CONEXAO_DOMAIN}/baixar 302
+	}
+	handle {
+		redir https://{$CONEXAO_SITE_DOMAIN}/ 302
 	}
 }
 

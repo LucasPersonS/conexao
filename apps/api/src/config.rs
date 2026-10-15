@@ -13,6 +13,9 @@ pub struct Config {
     pub public_url: String,
     /// Endereço do painel web (links de vínculo do Companion).
     pub panel_url: String,
+    /// Onde ficam as páginas públicas de perfil (`<profile_url>/u/<nick>`).
+    /// `CONEXAO_PROFILE_URL`; sem ela, a própria URL da API.
+    pub profile_url: String,
     /// Pasta da VPS onde os arquivos dos modpacks ficam, endereçados por SHA-1.
     pub storage_dir: PathBuf,
     /// Token da equipe Conexão (aprovar servidores, destaque pago).
@@ -169,6 +172,11 @@ impl Config {
                 .wrap_err("DATABASE_MAX_CONNECTIONS inválido")?
                 .unwrap_or(10),
             jwt_secret,
+            profile_url: var("CONEXAO_PROFILE_URL")
+                .map(|u| u.trim_end_matches('/').to_string())
+                .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
+                .filter(|u| !u.ends_with("://"))
+                .unwrap_or_else(|| public_url.clone()),
             public_url,
             panel_url: var("CONEXAO_PANEL_URL")
                 .unwrap_or_else(|| "http://localhost:5174".into())

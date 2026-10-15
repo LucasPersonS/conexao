@@ -25,7 +25,7 @@ crates/
   conexao-types/    Tipos compartilhados (manifesto, servidores, whitelist, protocolo do agente)
   conexao-pack/     Publicador: análise da pasta do modpack e diff entre versões
 packages/
-  profile-ui/       Card de perfil compartilhado (launcher, painel e página /u/<nick>)
+  profile-ui/       Card de perfil compartilhado (launcher, painel e página perfil.<domínio>/u/<nick>)
 vendor/             Código do Modrinth reutilizado (theseus, daedalus e dependências)
 branding/           Logo, ícones, letreiro e banner do Conexão
 deploy/             docker-compose para a VPS (API + PostgreSQL + Caddy: site, API e painel)

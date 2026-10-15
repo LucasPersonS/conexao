@@ -81,13 +81,14 @@ fi
 set_env CONEXAO_DOMAIN "$API"
 set_env CONEXAO_PANEL_DOMAIN "$PAINEL"
 set_env CONEXAO_SITE_DOMAIN "$DOMINIO_ASCII"
+set_env CONEXAO_PROFILE_DOMAIN "perfil.$DOMINIO_ASCII"
 set_env CONEXAO_CORS_ORIGINS "https://$PAINEL"
 [ -n "$STAFF_UUID" ] && set_env CONEXAO_STAFF_UUIDS "$STAFF_UUID"
 chmod 600 .env
 
 passo "Conferindo o DNS"
 IP_VPS=$(curl -fsS4 https://api.ipify.org || true)
-for nome in "$API" "$PAINEL" "$DOMINIO_ASCII" "www.$DOMINIO_ASCII"; do
+for nome in "$API" "$PAINEL" "$DOMINIO_ASCII" "www.$DOMINIO_ASCII" "perfil.$DOMINIO_ASCII"; do
   aponta=$(dig +short A "$nome" | tail -n1)
   if [ "$aponta" = "$IP_VPS" ]; then
     echo "   $nome -> $aponta (ok)"
@@ -133,6 +134,7 @@ cat <<FIM
    Site:   https://$DOMINIO_ASCII
    API:    https://$API/health
    Painel: https://$PAINEL
+   Perfis: https://perfil.$DOMINIO_ASCII/u/<nick>
    (o HTTPS pode levar 1 ou 2 minutos depois que o DNS estiver apontando)
 
    No GitHub (Settings > Secrets and variables > Actions > Variables), crie:

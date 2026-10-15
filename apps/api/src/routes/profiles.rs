@@ -355,7 +355,7 @@ async fn own_profile(state: &AppState, user: &User) -> ApiResult<OwnProfile> {
         ban_reason: row.profile_ban_reason.clone(),
         premium: is_premium(state, user.id).await?,
         premium_enforced: state.config.premium_enforced,
-        public_url: format!("{}/u/{}", state.config.public_url, row.minecraft_name),
+        public_url: format!("{}/u/{}", state.config.profile_url, row.minecraft_name),
         public,
     })
 }

@@ -42,6 +42,7 @@ services:
       CONEXAO_SIGNING_KEY: ${CONEXAO_SIGNING_KEY:-}
       CONEXAO_PUBLIC_URL: https://${CONEXAO_DOMAIN}
       CONEXAO_PANEL_URL: https://${CONEXAO_PANEL_DOMAIN}
+      CONEXAO_PROFILE_URL: https://${CONEXAO_PROFILE_DOMAIN:?defina CONEXAO_PROFILE_DOMAIN no .env (ex. perfil.conexaosmps.com.br)}
       CONEXAO_SERVER_QUOTA_MB: ${CONEXAO_SERVER_QUOTA_MB:-300}
       CONEXAO_FEATURED_QUOTA_MB: ${CONEXAO_FEATURED_QUOTA_MB:-1024}
       CONEXAO_CORS_ORIGINS: ${CONEXAO_CORS_ORIGINS:-}
@@ -128,6 +129,7 @@ services:
       CONEXAO_DOMAIN: ${CONEXAO_DOMAIN:?defina CONEXAO_DOMAIN no .env}
       CONEXAO_PANEL_DOMAIN: ${CONEXAO_PANEL_DOMAIN:?defina CONEXAO_PANEL_DOMAIN no .env}
       CONEXAO_SITE_DOMAIN: ${CONEXAO_SITE_DOMAIN:?defina CONEXAO_SITE_DOMAIN no .env (ex. conexaosmps.com.br)}
+      CONEXAO_PROFILE_DOMAIN: ${CONEXAO_PROFILE_DOMAIN:?defina CONEXAO_PROFILE_DOMAIN no .env (ex. perfil.conexaosmps.com.br)}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../apps/panel/dist:/srv/panel:ro

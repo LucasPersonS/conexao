@@ -82,6 +82,13 @@ if ! grep -qE '^CONEXAO_SITE_DOMAIN=.' .env; then
   sed -i '/^CONEXAO_SITE_DOMAIN=/d' .env
   printf '\nCONEXAO_SITE_DOMAIN=%s\n' "$SITE_DOMAIN" >> .env
 fi
+# Perfis públicos em perfil.<domínio>.
+if ! grep -qE '^CONEXAO_PROFILE_DOMAIN=.' .env; then
+  PROFILE_DOMAIN="perfil.${API_DOMAIN#api.}"
+  echo "   CONEXAO_PROFILE_DOMAIN=$PROFILE_DOMAIN (adicionado ao .env)"
+  sed -i '/^CONEXAO_PROFILE_DOMAIN=/d' .env
+  printf 'CONEXAO_PROFILE_DOMAIN=%s\n' "$PROFILE_DOMAIN" >> .env
+fi
 
 passo "Reiniciando os serviços"
 docker compose up -d --remove-orphans
