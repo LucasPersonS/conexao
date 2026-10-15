@@ -38,12 +38,15 @@ git_() { git -C "$RAIZ" -c http.extraheader="$AUTH" "$@"; }
 
 passo "Baixando o código novo ($REPO, $BRANCH)"
 command -v git >/dev/null || apt-get install -y -q git
+# A pasta veio do seu PC (outro dono); o git só aceita mexer nela com esta exceção.
+git config --global --get-all safe.directory | grep -qx "$RAIZ" || git config --global --add safe.directory "$RAIZ"
 if [ ! -d "$RAIZ/.git" ]; then
   # Primeira vez: a pasta veio por cópia, sem git. Liga ao repositório sem apagar
   # nada que não está no git (.env, rclone.conf, backups, chaves).
   git -C "$RAIZ" init -q -b "$BRANCH"
-  git -C "$RAIZ" remote add origin "https://github.com/$REPO.git"
 fi
+git -C "$RAIZ" remote get-url origin >/dev/null 2>&1 \
+  || git -C "$RAIZ" remote add origin "https://github.com/$REPO.git"
 ANTES="$(git -C "$RAIZ" rev-parse -q --verify HEAD || echo nenhum)"
 git_ fetch -q origin "$BRANCH"
 git -C "$RAIZ" reset -q --hard "origin/$BRANCH"
