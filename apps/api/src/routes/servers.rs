@@ -430,7 +430,11 @@ pub async fn set_approval(
         return Err(ApiError::bad("Use pending, approved, rejected ou suspended."));
     }
     let id = server_id_by_slug(&state.pool, &slug).await?;
-    sqlx::query("UPDATE servers SET approval = $2 WHERE id = $1")
+    sqlx::query(
+        "UPDATE servers SET approval = $2,
+                approval_updated_at = CASE WHEN approval = $2 THEN approval_updated_at ELSE now() END
+          WHERE id = $1",
+    )
         .bind(id)
         .bind(&input.approval)
         .execute(&state.pool)

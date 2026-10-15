@@ -214,7 +214,36 @@ pub async fn publish(
             crate::policy::megabytes(quota)
         )));
     }
-    let present: Vec<String> = sqlx::query_scalar("SELECT sha1 FROM stored_files WHERE sha1 = ANY($1)")
+    // Servidor em análise: todas as versões juntas cabem na cota (não dá para ir
+    // acumulando versões enquanto a equipe não aprova).
+    let approval: String = sqlx::query_scalar("SELECT approval FROM servers WHERE id = $1")
+        .bind(server_id)
+        .fetch_one(&state.pool)
+        .await?;
+    if approval != "approved" {
+        let total: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(sf.size), 0)::BIGINT FROM stored_files sf
+              WHERE sf.sha1 = ANY($2)
+                 OR EXISTS (SELECT 1 FROM pack_versions pv
+                             WHERE pv.server_id = $1
+                               AND pv.manifest -> 'files' @> jsonb_build_array(jsonb_build_object('sha1', sf.sha1)))",
+        )
+        .bind(server_id)
+        .bind(&hosted)
+        .fetch_one(&state.pool)
+        .await?;
+        let total = u64::try_from(total).unwrap_or(0);
+        if total > quota {
+            return Err(ApiError::bad(format!(
+                "Enquanto o servidor está em análise, todas as versões juntas podem hospedar até {} (com esta, {}). Espere a aprovação para publicar mais.",
+                crate::policy::megabytes(quota),
+                crate::policy::megabytes(total)
+            )));
+        }
+    }
+    // Conferir conta como uso: a limpeza diária não apaga estes arquivos no meio da publicação.
+    let present: Vec<String> =
+        sqlx::query_scalar("UPDATE stored_files SET last_used_at = now() WHERE sha1 = ANY($1) RETURNING sha1")
         .bind(&hosted)
         .fetch_all(&state.pool)
         .await?;

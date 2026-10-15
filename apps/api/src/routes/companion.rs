@@ -344,7 +344,8 @@ pub async fn plan_from_server(
         .filter(|f| !resolved.contains_key(&f.sha1) && !excluded.contains(f.path.as_str()))
         .map(|f| f.sha1.clone())
         .collect();
-    let stored: Vec<String> = sqlx::query_scalar("SELECT sha1 FROM stored_files WHERE sha1 = ANY($1)")
+    let stored: Vec<String> =
+        sqlx::query_scalar("UPDATE stored_files SET last_used_at = now() WHERE sha1 = ANY($1) RETURNING sha1")
         .bind(&needed)
         .fetch_all(&state.pool)
         .await?;

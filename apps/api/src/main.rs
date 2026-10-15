@@ -6,6 +6,7 @@
 
 mod agents;
 mod auth;
+mod cleanup;
 mod config;
 mod error;
 mod moderation;
@@ -72,6 +73,7 @@ async fn main() -> eyre::Result<()> {
     let state = AppState::new(config, pool);
     tokio::spawn(status::run(state.clone()));
     tokio::spawn(monitor::run(state.clone()));
+    tokio::spawn(cleanup::run(state.clone()));
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!("Conexão API ouvindo em {bind}");

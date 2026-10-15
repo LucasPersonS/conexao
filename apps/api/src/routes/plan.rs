@@ -254,7 +254,9 @@ pub async fn build(
     // 3. O resto precisa estar no storage
     let local_hashes: Vec<String> = local.iter().map(|(_, h)| h.clone()).collect();
     let stored: HashMap<String, i64> =
-        sqlx::query_as::<_, (String, i64)>("SELECT sha1, size FROM stored_files WHERE sha1 = ANY($1)")
+        sqlx::query_as::<_, (String, i64)>(
+            "UPDATE stored_files SET last_used_at = now() WHERE sha1 = ANY($1) RETURNING sha1, size",
+        )
             .bind(&local_hashes)
             .fetch_all(&state.pool)
             .await?

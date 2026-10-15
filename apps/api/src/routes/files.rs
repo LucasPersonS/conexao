@@ -54,8 +54,10 @@ fn check_hashes(list: &[String]) -> ApiResult<()> {
     Ok(())
 }
 
-async fn stored(state: &AppState, hashes: &[String]) -> ApiResult<Vec<String>> {
-    Ok(sqlx::query_scalar("SELECT sha1 FROM stored_files WHERE sha1 = ANY($1)")
+/// Quais destes já estão no storage. Consultar conta como uso: a limpeza diária
+/// (src/cleanup.rs) não apaga um arquivo que alguém está para publicar.
+pub async fn stored(state: &AppState, hashes: &[String]) -> ApiResult<Vec<String>> {
+    Ok(sqlx::query_scalar("UPDATE stored_files SET last_used_at = now() WHERE sha1 = ANY($1) RETURNING sha1")
         .bind(hashes)
         .fetch_all(&state.pool)
         .await?)
@@ -175,12 +177,26 @@ pub async fn upload(
     };
     let url = format!("{}/files/{sha1}", state.config.public_url);
     // Já guardado (por qualquer servidor): nada a receber.
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM stored_files WHERE sha1 = $1)")
-        .bind(&sha1)
-        .fetch_one(&state.pool)
-        .await?;
+    let exists = sqlx::query_scalar::<_, String>(
+        "UPDATE stored_files SET last_used_at = now() WHERE sha1 = $1 RETURNING sha1",
+    )
+    .bind(&sha1)
+    .fetch_optional(&state.pool)
+    .await?
+    .is_some();
     if exists {
         return Ok((StatusCode::OK, Json(json!({ "sha1": sha1, "url": url }))));
+    }
+
+    // Trava de disco: perto de lotar, a VPS para de aceitar arquivos novos (o monitor
+    // já avisou a equipe no Discord) em vez de quebrar banco, backups e downloads.
+    if let Some(used) = crate::monitor::disk_used_percent(&state.config.storage_dir)
+        && used >= state.config.disk_alert_percent
+    {
+        tracing::warn!("envio recusado: disco com {used:.0}% em uso");
+        return Err(ApiError::bad(
+            "O armazenamento do Conexão está cheio no momento. Tente de novo mais tarde; a equipe já foi avisada.",
+        ));
     }
 
     let max_file = state.config.max_upload_bytes as u64;
