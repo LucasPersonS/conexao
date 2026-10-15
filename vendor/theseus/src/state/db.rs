@@ -2,6 +2,8 @@ use crate::state::DirectoryInfo;
 use sqlx::sqlite::{
     SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions,
 };
+use sha2::{Digest, Sha384};
+use sqlx::migrate::Migrator;
 use sqlx::{Pool, Sqlite};
 use std::path::Path;
 use std::time::Duration;
@@ -35,7 +37,9 @@ async fn open_migrated_app_db(db_path: &Path) -> crate::Result<Pool<Sqlite>> {
         );
     }
 
-    sqlx::migrate!().run(&pool).await?;
+    let migrator = sqlx::migrate!();
+    repair_line_ending_checksums(&pool, &migrator).await?;
+    migrator.run(&pool).await?;
     record_current_app_version(&pool).await?;
 
     if let Err(err) = stale_data_cleanup(&pool).await {
@@ -45,6 +49,62 @@ async fn open_migrated_app_db(db_path: &Path) -> crate::Result<Pool<Sqlite>> {
     }
 
     Ok(pool)
+}
+
+/// `sqlx::migrate!()` embeds each migration's SHA-384 at compile time. A build
+/// made from a checkout with CRLF line endings embeds different checksums than
+/// an LF build, and sqlx then refuses to start with "migration ... was
+/// previously applied but has been modified". When the stored checksum matches
+/// the same SQL with only the line endings swapped, update it to the current one.
+async fn repair_line_ending_checksums(
+    pool: &Pool<Sqlite>,
+    migrator: &Migrator,
+) -> crate::Result<()> {
+    let has_table: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'",
+    )
+    .fetch_one(pool)
+    .await?;
+    if has_table == 0 {
+        return Ok(());
+    }
+
+    let applied: Vec<(i64, Vec<u8>)> =
+        sqlx::query_as("SELECT version, checksum FROM _sqlx_migrations")
+            .fetch_all(pool)
+            .await?;
+
+    for (version, stored) in applied {
+        let Some(migration) =
+            migrator.iter().find(|m| m.version == version)
+        else {
+            continue;
+        };
+        if stored.as_slice() == &*migration.checksum {
+            continue;
+        }
+
+        let lf = migration.sql.replace("\r\n", "\n");
+        let crlf = lf.replace('\n', "\r\n");
+        let only_line_endings_differ = [lf, crlf].iter().any(|sql| {
+            Sha384::digest(sql.as_bytes()).as_slice() == stored.as_slice()
+        });
+
+        if only_line_endings_differ {
+            tracing::warn!(
+                "Repairing checksum of migration {version} (line endings changed)"
+            );
+            sqlx::query(
+                "UPDATE _sqlx_migrations SET checksum = ? WHERE version = ?",
+            )
+            .bind(&*migration.checksum)
+            .bind(version)
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    Ok(())
 }
 
 async fn open_app_db_pool(db_path: &Path) -> crate::Result<Pool<Sqlite>> {

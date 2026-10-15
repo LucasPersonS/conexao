@@ -1,0 +1,62 @@
+CONEXAO - COMO LANCAR UMA VERSAO NOVA DO LAUNCHER
+=================================================
+
+IMPORTANTE
+- O erro "migration ... was previously applied but has been modified" e do
+  LAUNCHER (no PC do jogador), nao da VPS. Atualizar a VPS sozinho nao corrige.
+- O instalador novo so e gerado pelo GitHub quando voce envia uma TAG "v...".
+- O atualizar.sh da VPS baixa o ULTIMO RELEASE publicado. Entao a ordem e:
+  versao nova -> commit -> tag -> esperar o GitHub -> atualizar a VPS.
+
+
+1) NO SEU PC (PowerShell, dentro da pasta CENTRAL)
+--------------------------------------------------
+# Troque 0.1.3 pela versao nova (precisa ser maior que a anterior).
+# A versao fica em apps/launcher/src-tauri/tauri.conf.json  ->  "version": "0.1.3"
+
+cd C:\Users\Lucas\Documents\CENTRAL
+git add -A
+git commit -m "Launcher 0.1.3: corrige erro de checksum das migracoes"
+git push
+git tag v0.1.3
+git push origin v0.1.3
+
+
+2) ESPERAR O GITHUB
+-------------------
+Abra https://github.com/LucasPersonS/conexao/actions
+Espere o job "Instalador Windows (release)" ficar verde
+(costuma levar uns 15-30 min). Confira em /releases que a v0.1.3 apareceu.
+
+
+3) NA VPS (como root)
+---------------------
+ssh root@IP_DA_VPS
+bash /opt/conexao/deploy/atualizar.sh
+
+Ele baixa o codigo novo, reinicia API/painel, pega o instalador do ultimo
+release e atualiza o latest.json (atualizacao automatica + pagina /baixar).
+
+
+4) JOGADOR QUE JA ESTA COM O ERRO
+---------------------------------
+Mande ele baixar e instalar de novo pela pagina /baixar do site.
+Instalar por cima resolve: nao precisa apagar nada, contas e instancias ficam.
+
+Se mesmo assim nao abrir (ultimo recurso, apaga contas/instancias salvas):
+  - Feche o launcher
+  - Win+R  ->  %APPDATA%\gg.conexao.launcher
+  - Renomeie app.db para app.db.velho (e apague app.db-wal e app.db-shm)
+  - Abra o launcher de novo
+
+
+EXTRAS UTEIS
+------------
+# Ver se esta tudo limpo antes de commitar
+git status
+
+# Errou a tag antes de dar push? Apagar local:
+git tag -d v0.1.3
+
+# Garantir que todos os .sql estejam em LF (rodar uma vez, depois commitar)
+git add --renormalize .
