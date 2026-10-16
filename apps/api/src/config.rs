@@ -65,6 +65,15 @@ pub struct Config {
     pub disk_alert_percent: f64,
     /// Pasta com os dumps do serviço `backup` (montada só para leitura).
     pub backup_dir: Option<PathBuf>,
+    /// App OAuth2 do Discord (login de contas não originais). Sem ele, o login fica desativado.
+    pub discord_client_id: Option<String>,
+    pub discord_client_secret: Option<String>,
+    /// Redirect cadastrado no app do Discord. Padrão: `<public_url>/v1/auth/discord/callback`.
+    pub discord_redirect_uri: String,
+    pub discord_api_url: String,
+    /// Endereço só IPv4 da API (registro A, sem AAAA) usado para pedir o passe de entrada,
+    /// para o IP registrado ser o mesmo com que o jogo conecta. Sem ele, usa `public_url`.
+    pub join_url: Option<String>,
 }
 
 /// Lê `CONEXAO_*`; se não existir, aceita o nome antigo (`CENTRAL_*`) para quem ainda não migrou.
@@ -143,6 +152,15 @@ impl Config {
         if external.iter().any(|url| !url.starts_with("https://")) {
             missing.push("URLs de serviços externos (CONEXAO_*_URL) em https");
         }
+        if self.discord_client_id.is_some() != self.discord_client_secret.is_some() {
+            missing.push("CONEXAO_DISCORD_CLIENT_ID e CONEXAO_DISCORD_CLIENT_SECRET (as duas juntas)");
+        }
+        if !self.discord_api_url.starts_with("https://") || !self.discord_redirect_uri.starts_with("https://") {
+            missing.push("CONEXAO_DISCORD_API_URL e CONEXAO_DISCORD_REDIRECT_URI em https");
+        }
+        if self.join_url.as_deref().is_some_and(|url| !url.starts_with("https://")) {
+            missing.push("CONEXAO_JOIN_URL em https");
+        }
         if self.allow_private_ping {
             missing.push("CONEXAO_ALLOW_PRIVATE_PING desligado (só para testes locais)");
         }
@@ -163,7 +181,19 @@ impl Config {
             .trim_end_matches('/')
             .to_string();
         let production = is_production_url(&public_url);
+        let discord_redirect_uri = var("CONEXAO_DISCORD_REDIRECT_URI")
+            .unwrap_or_else(|| format!("{public_url}/v1/auth/discord/callback"));
         Ok(Self {
+            discord_client_id: var("CONEXAO_DISCORD_CLIENT_ID"),
+            discord_client_secret: var("CONEXAO_DISCORD_CLIENT_SECRET"),
+            discord_redirect_uri,
+            discord_api_url: var("CONEXAO_DISCORD_API_URL")
+                .unwrap_or_else(|| "https://discord.com/api/v10".into())
+                .trim_end_matches('/')
+                .to_string(),
+            join_url: var("CONEXAO_JOIN_URL")
+                .or_else(|| var("CONEXAO_JOIN_DOMAIN").map(|domain| format!("https://{domain}")))
+                .map(|u| u.trim_end_matches('/').to_string()),
             bind: var("CONEXAO_BIND").unwrap_or_else(|| "0.0.0.0:8080".into()),
             database_url: var("DATABASE_URL").ok_or_else(|| eyre!("defina DATABASE_URL"))?,
             database_max_connections: var("DATABASE_MAX_CONNECTIONS")

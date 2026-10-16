@@ -54,6 +54,9 @@ pub struct ServerSummary {
     /// Tamanho total do modpack estável em bytes (mostrado no botão "Instalar").
     #[serde(default)]
     pub pack_size: Option<u64>,
+    /// Aceita contas não originais (login pelo Discord).
+    #[serde(default)]
+    pub allow_offline: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

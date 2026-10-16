@@ -1,5 +1,6 @@
 pub mod companion;
 pub mod detect;
+pub mod discord;
 pub mod featured;
 pub mod files;
 pub mod images;
@@ -44,6 +45,12 @@ pub fn router(state: AppState) -> Router {
 
     let api = Router::new()
         .route("/auth/minecraft", post(me::login_minecraft))
+        .route("/auth/discord", post(discord::login))
+        .route("/auth/discord/config", get(discord::config))
+        .route("/auth/discord/callback", get(discord::callback))
+        .route("/auth/offline/register", post(discord::register))
+        .route("/auth/offline/session", post(discord::session))
+        .route("/auth/offline/logout", post(discord::logout))
         .route("/auth/pair", post(pairing::start))
         .route("/auth/pair/approve", post(pairing::approve))
         .route("/auth/pair/poll", post(pairing::poll))
@@ -66,6 +73,7 @@ pub fn router(state: AppState) -> Router {
         .route("/servers/{slug}/channels/{channel}", put(versions::set_channel))
         .route("/servers/{slug}/whitelist", get(whitelist::list).post(whitelist::set_by_name))
         .route("/servers/{slug}/whitelist/apply", post(whitelist::apply))
+        .route("/servers/{slug}/join-ticket", post(whitelist::join_ticket))
         .route("/servers/{slug}/agent/token", post(agents::create_token))
         .route("/agent/connect", get(agents::connect))
         .route("/companion/hello", post(companion::hello))

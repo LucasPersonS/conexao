@@ -78,6 +78,9 @@ async fn handle(config: &Config, message: ToAgent) -> Option<FromAgent> {
                 Err(error) => FromAgent::CommandResult { id, ok: false, output: format!("{error:#}") },
             })
         }
+        // Passe de entrada (contas não originais) só funciona com o Companion, que roda dentro
+        // do servidor. A API não deixa ligar a opção com o agente externo.
+        ToAgent::JoinTickets { .. } | ToAgent::JoinTicket(_) => None,
     }
 }
 

@@ -1,13 +1,14 @@
 //! Cliente da API central do Conexão.
 
-use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use conexao_types::{AccessResponse, PackManifest, ServerSummary};
+use conexao_types::{AccessResponse, JoinTicketResponse, PackManifest, ServerSummary};
 use serde::{Deserialize, Serialize};
 
 use crate::AppContext;
-use crate::account::default_credentials;
+use crate::account::{OfflineAccount, default_credentials, load_offline, remove_offline, save_offline};
 use crate::error::{CmdError, CmdResult};
 
 /// URL da API, definida no build (`CONEXAO_API_URL`). Em desenvolvimento também pode
@@ -44,6 +45,10 @@ pub struct ConexaoApi {
     base: String,
     http: reqwest::Client,
     token: Mutex<Option<String>>,
+    /// Pasta de dados do launcher (definida no `setup` do Tauri).
+    data_dir: OnceLock<PathBuf>,
+    /// Conta não original ativa, se houver (tem prioridade sobre a conta Microsoft).
+    offline: Mutex<Option<OfflineAccount>>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -52,6 +57,30 @@ pub struct ConexaoUser {
     pub minecraft_uuid: uuid::Uuid,
     pub minecraft_name: String,
     pub is_staff: bool,
+    #[serde(default)]
+    pub account_type: String,
+}
+
+#[derive(Deserialize)]
+pub struct DiscordConfig {
+    pub enabled: bool,
+    pub client_id: Option<String>,
+    pub redirect_uri: String,
+    pub scope: String,
+}
+
+#[derive(Deserialize)]
+pub struct OfflineLogin {
+    pub token: String,
+    pub session: String,
+    pub user: ConexaoUser,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum DiscordLoginResponse {
+    Ok(OfflineLogin),
+    NeedsNick { signup_token: String, discord_name: String, suggested_nick: Option<String> },
 }
 
 #[derive(Deserialize)]
@@ -116,7 +145,100 @@ impl ConexaoApi {
             .https_only(!cfg!(debug_assertions))
             .build()
             .unwrap_or_default();
-        Self { base: base.trim_end_matches('/').to_string(), http, token: Mutex::new(None) }
+        Self {
+            base: base.trim_end_matches('/').to_string(),
+            http,
+            token: Mutex::new(None),
+            data_dir: OnceLock::new(),
+            offline: Mutex::new(None),
+        }
+    }
+
+    /// Chamado uma vez na inicialização: carrega a conta não original salva.
+    pub fn set_data_dir(&self, dir: PathBuf) {
+        if let Ok(mut offline) = self.offline.lock() {
+            *offline = load_offline(&dir);
+        }
+        let _ = self.data_dir.set(dir);
+    }
+
+    pub fn offline_account(&self) -> Option<OfflineAccount> {
+        self.offline.lock().ok().and_then(|o| o.clone())
+    }
+
+    fn set_token(&self, value: String) {
+        if let Ok(mut token) = self.token.lock() {
+            *token = Some(value);
+        }
+    }
+
+    /// Salva a conta não original recém-logada e já guarda o JWT dela.
+    pub async fn store_offline_login(&self, login: OfflineLogin) -> CmdResult<OfflineAccount> {
+        let account =
+            OfflineAccount { uuid: login.user.minecraft_uuid, name: login.user.minecraft_name, session: login.session };
+        let dir = self.data_dir.get().ok_or_else(|| CmdError::new("launcher ainda iniciando"))?;
+        save_offline(dir, &account)?;
+        if let Ok(mut offline) = self.offline.lock() {
+            *offline = Some(account.clone());
+        }
+        self.set_token(login.token);
+        // Uma conta por vez: a Microsoft salva deixa de ser usada.
+        if let Ok(Some(user)) = theseus::minecraft_auth::get_default_user().await {
+            let _ = theseus::minecraft_auth::remove_user(user).await;
+        }
+        Ok(account)
+    }
+
+    /// Sai da conta não original: apaga a sessão no Conexão (se der) e no computador.
+    pub async fn forget_offline(&self) {
+        let account = self.offline.lock().ok().and_then(|mut o| o.take());
+        if let Some(account) = account {
+            let _ = self
+                .http
+                .post(format!("{}/v1/auth/offline/logout", self.base))
+                .json(&serde_json::json!({ "session": account.session }))
+                .send()
+                .await;
+        }
+        if let Some(dir) = self.data_dir.get() {
+            remove_offline(dir);
+        }
+    }
+
+    pub async fn discord_config(&self) -> CmdResult<DiscordConfig> {
+        let response = self.http.get(format!("{}/v1/auth/discord/config", self.base)).send().await?;
+        Ok(Self::check(response).await?.json().await?)
+    }
+
+    pub async fn discord_login(&self, code: &str) -> CmdResult<DiscordLoginResponse> {
+        let response = self
+            .http
+            .post(format!("{}/v1/auth/discord", self.base))
+            .json(&serde_json::json!({ "code": code }))
+            .send()
+            .await?;
+        Ok(Self::check(response).await?.json().await?)
+    }
+
+    pub async fn register_offline(&self, signup_token: &str, nick: &str) -> CmdResult<OfflineLogin> {
+        let response = self
+            .http
+            .post(format!("{}/v1/auth/offline/register", self.base))
+            .json(&serde_json::json!({ "signup_token": signup_token, "nick": nick }))
+            .send()
+            .await?;
+        Ok(Self::check(response).await?.json().await?)
+    }
+
+    /// Passe de entrada para servidores que aceitam contas não originais. Vai pelo
+    /// endereço só IPv4 informado pela API, para o IP registrado ser o mesmo do jogo.
+    pub async fn join_ticket(&self, join_url: &str, slug: &str) -> CmdResult<JoinTicketResponse> {
+        let join_url = join_url.trim_end_matches('/');
+        if !(join_url.starts_with("https://") || cfg!(debug_assertions)) {
+            return Err(CmdError::new("Endereço do passe de entrada inválido."));
+        }
+        let request = self.http.post(format!("{join_url}/v1/servers/{slug}/join-ticket"));
+        Ok(self.authed(request).await?.json().await?)
     }
 
     pub fn http(&self) -> &reqwest::Client {
@@ -150,11 +272,26 @@ impl ConexaoApi {
         Err(CmdError::new(message))
     }
 
-    /// Troca o access token Minecraft por uma sessão do Conexão.
+    /// Abre a sessão do Conexão: pela sessão salva da conta não original ou trocando o
+    /// access token Minecraft da conta original.
     pub async fn login(&self) -> CmdResult<ConexaoUser> {
+        if let Some(account) = self.offline_account() {
+            let response = self
+                .http
+                .post(format!("{}/v1/auth/offline/session", self.base))
+                .json(&serde_json::json!({ "session": account.session }))
+                .send()
+                .await?;
+            if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+                return Err(CmdError::new("Sua sessão do Discord expirou. Saia e entre de novo."));
+            }
+            let body: LoginResponse = Self::check(response).await?.json().await?;
+            self.set_token(body.token);
+            return Ok(body.user);
+        }
         let credentials = default_credentials()
             .await?
-            .ok_or_else(|| CmdError::new("Entre com sua conta Microsoft primeiro."))?;
+            .ok_or_else(|| CmdError::new("Entre com sua conta primeiro."))?;
         let response = self
             .http
             .post(format!("{}/v1/auth/minecraft", self.base))
@@ -162,9 +299,7 @@ impl ConexaoApi {
             .send()
             .await?;
         let body: LoginResponse = Self::check(response).await?.json().await?;
-        if let Ok(mut token) = self.token.lock() {
-            *token = Some(body.token);
-        }
+        self.set_token(body.token);
         Ok(body.user)
     }
 

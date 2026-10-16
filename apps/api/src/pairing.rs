@@ -225,9 +225,7 @@ pub async fn poll(
         return Ok((StatusCode::ACCEPTED, Json(PollResponse { status: "pending", token: None, user: None })));
     };
     state.pairings.by_code.remove(&code);
-    let user = sqlx::query_as::<_, User>(
-        "SELECT id, minecraft_uuid, minecraft_name, is_staff FROM users WHERE id = $1",
-    )
+    let user = sqlx::query_as::<_, User>(&format!("SELECT {} FROM users WHERE id = $1", crate::auth::USER_COLUMNS))
     .bind(user_id)
     .fetch_one(&state.pool)
     .await?;

@@ -8,7 +8,7 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use axum::Json;
 use conexao_types::WhitelistPlayer;
-use conexao_types::agent::{FromAgent, ToAgent};
+use conexao_types::agent::{FromAgent, JoinTicket, ToAgent};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use rand::RngCore;
@@ -45,6 +45,10 @@ pub fn sha256_hex(value: &str) -> String {
 }
 
 pub async fn approved_players(pool: &PgPool, server_id: Uuid) -> ApiResult<Vec<WhitelistPlayer>> {
+    let allow_offline: bool = sqlx::query_scalar("SELECT allow_offline FROM servers WHERE id = $1")
+        .bind(server_id)
+        .fetch_one(pool)
+        .await?;
     let rows: Vec<(Uuid, String)> = sqlx::query_as(
         "SELECT u.minecraft_uuid, u.minecraft_name
            FROM whitelist_entries w JOIN users u ON u.id = w.user_id
@@ -54,7 +58,45 @@ pub async fn approved_players(pool: &PgPool, server_id: Uuid) -> ApiResult<Vec<W
     .bind(server_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().map(|(uuid, name)| WhitelistPlayer { uuid, name }).collect())
+    Ok(rows.into_iter().map(|(uuid, name)| whitelist_player(allow_offline, uuid, name)).collect())
+}
+
+/// Em `online-mode=false` o servidor identifica todo mundo (original ou não) pelo UUID offline do nick.
+pub fn whitelist_player(allow_offline: bool, uuid: Uuid, name: String) -> WhitelistPlayer {
+    if allow_offline {
+        WhitelistPlayer { uuid: conexao_types::offline::offline_uuid(&name), name }
+    } else {
+        WhitelistPlayer { uuid, name }
+    }
+}
+
+/// Estado do passe de entrada para o Companion: liga/desliga e passes ainda válidos.
+pub async fn join_tickets_message(pool: &PgPool, server_id: Uuid) -> ApiResult<ToAgent> {
+    let enforce: bool = sqlx::query_scalar("SELECT allow_offline FROM servers WHERE id = $1")
+        .bind(server_id)
+        .fetch_one(pool)
+        .await?;
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT player_name, ip, EXTRACT(EPOCH FROM (expires_at - now()))::BIGINT
+           FROM join_tickets WHERE server_id = $1 AND expires_at > now()",
+    )
+    .bind(server_id)
+    .fetch_all(pool)
+    .await?;
+    let tickets = rows
+        .into_iter()
+        .map(|(name, ip, secs)| JoinTicket { name, ip, expires_in: u64::try_from(secs).unwrap_or(0) })
+        .collect();
+    Ok(ToAgent::JoinTickets { enforce, tickets })
+}
+
+/// Avisa o Companion que a opção de contas não originais mudou.
+pub async fn push_join_tickets(state: &AppState, server_id: Uuid) -> ApiResult<()> {
+    if state.agents.is_connected(server_id) {
+        let message = join_tickets_message(&state.pool, server_id).await?;
+        state.agents.send(server_id, message);
+    }
+    Ok(())
 }
 
 pub async fn whitelist_message(pool: &PgPool, server_id: Uuid) -> ApiResult<ToAgent> {
@@ -133,11 +175,13 @@ async fn session(state: AppState, server_id: Uuid, socket: WebSocket) -> ApiResu
 
     let (mut sink, mut stream) = socket.split();
     let initial = whitelist_message(&state.pool, server_id).await?;
+    let tickets = join_tickets_message(&state.pool, server_id).await?;
     let mut ping = tokio::time::interval(Duration::from_secs(30));
 
     let send = |message: &ToAgent| Message::Text(serde_json::to_string(message).unwrap_or_default().into());
     let result: ApiResult<()> = async {
         sink.send(send(&initial)).await.map_err(|e| ApiError::Internal(e.into()))?;
+        sink.send(send(&tickets)).await.map_err(|e| ApiError::Internal(e.into()))?;
         loop {
             tokio::select! {
                 outgoing = rx.recv() => {

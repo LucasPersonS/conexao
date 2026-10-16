@@ -75,8 +75,9 @@ async function confirm() {
       </div>
     </div>
     <p v-if="!link.info.online_mode" class="warn-text">
-      Atenção: o servidor está com <code>online-mode=false</code>. O Conexão só funciona com contas originais; ative o
-      online-mode.
+      Atenção: o servidor está com <code>online-mode=false</code>. Depois de vincular, ligue
+      <b>Aceitar contas não originais</b> nas configurações do servidor: sem isso, qualquer um entra com o nick de
+      outra pessoa. Se o servidor é só para contas originais, ative o <code>online-mode</code>.
     </p>
 
     <p v-if="link.linked_slug" class="ok">Este servidor já está vinculado a <b>{{ link.linked_slug }}</b>.</p>

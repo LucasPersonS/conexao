@@ -23,6 +23,8 @@ const account = ref<Account | null>(null)
 const roles = ref<MyRoles | null>(null)
 const loginBusy = ref(false)
 const loginError = ref<string | null>(null)
+/** Cadastro pelo Discord em andamento (falta o nick). */
+const signup = ref<{ token: string; discord_name: string; suggested_nick: string | null } | null>(null)
 const pairing = ref(false)
 const content = ref<HTMLElement | null>(null)
 
@@ -52,6 +54,43 @@ async function login() {
   try {
     account.value = await api.login()
     if (account.value) await afterLogin()
+  } catch (error) {
+    loginError.value = errorMessage(error)
+  } finally {
+    loginBusy.value = false
+  }
+}
+
+async function loginDiscord() {
+  loginBusy.value = true
+  loginError.value = null
+  try {
+    const result = await api.loginDiscord()
+    if (result.status === 'ok') {
+      account.value = result.account
+      await afterLogin()
+    } else if (result.status === 'needs_nick') {
+      signup.value = {
+        token: result.signup_token,
+        discord_name: result.discord_name,
+        suggested_nick: result.suggested_nick,
+      }
+    }
+  } catch (error) {
+    loginError.value = errorMessage(error)
+  } finally {
+    loginBusy.value = false
+  }
+}
+
+async function registerOffline(nick: string) {
+  if (!signup.value) return
+  loginBusy.value = true
+  loginError.value = null
+  try {
+    account.value = await api.registerOffline(signup.value.token, nick)
+    signup.value = null
+    await afterLogin()
   } catch (error) {
     loginError.value = errorMessage(error)
   } finally {
@@ -107,7 +146,16 @@ onMounted(async () => {
   <div class="shell">
     <TitleBar />
     <div v-if="!ready" class="splash"><img :src="logo" alt="" />Carregando…</div>
-    <LoginGate v-else-if="!account" :busy="loginBusy" :error="loginError" @login="login" />
+    <LoginGate
+      v-else-if="!account"
+      :busy="loginBusy"
+      :error="loginError"
+      :signup="signup"
+      @login="login"
+      @discord="loginDiscord"
+      @register="registerOffline"
+      @cancel-signup="(signup = null), (loginError = null)"
+    />
     <template v-else>
       <TopNav :account="account" :roles="roles" @pair="pairing = true" @token="copyToken" @logout="logout" />
       <main ref="content" class="content grid-bg">

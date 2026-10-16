@@ -35,12 +35,13 @@ pub struct ServerRow {
     status_checked_at: Option<DateTime<Utc>>,
     current_version: Option<String>,
     pack_size: Option<i64>,
+    allow_offline: bool,
 }
 
 const SELECT: &str = "SELECT s.id, s.slug, s.name, s.description, s.address, s.minecraft_version, s.loader,
         s.loader_version, s.tags, s.icon_url, s.banner_url, s.discord_url, s.whitelist_required, s.approval,
         s.featured_until, s.status_online, s.status_players, s.status_max_players, s.status_latency_ms,
-        s.status_checked_at, pv.version AS current_version,
+        s.status_checked_at, s.allow_offline, pv.version AS current_version,
         (SELECT SUM((f->>'size')::BIGINT)::BIGINT FROM jsonb_array_elements(pv.manifest->'files') f) AS pack_size
    FROM servers s
    LEFT JOIN server_channels sc ON sc.server_id = s.id AND sc.channel = 'stable'
@@ -102,6 +103,7 @@ impl ServerRow {
                 },
                 current_version: self.current_version,
                 pack_size: self.pack_size.and_then(|v| u64::try_from(v).ok()),
+                allow_offline: self.allow_offline,
             },
         }
     }
@@ -287,6 +289,57 @@ pub struct ServerPatch {
     pub banner_url: Option<String>,
     pub discord_url: Option<String>,
     pub whitelist_required: Option<bool>,
+    /// Aceitar contas não originais (exige Companion 0.2+ e `online-mode=false`).
+    pub allow_offline: Option<bool>,
+}
+
+/// Versão mínima do Companion que aplica o passe de entrada.
+const COMPANION_JOIN_TICKETS: (u64, u64) = (0, 2);
+
+fn companion_supports_tickets(agent_version: &str) -> bool {
+    let Some(version) = agent_version.strip_prefix("companion-").and_then(|rest| rest.rsplit('-').next()) else {
+        return false;
+    };
+    let mut parts = version.split('.').map(|p| p.parse::<u64>().unwrap_or(0));
+    let current = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
+    current >= COMPANION_JOIN_TICKETS
+}
+
+/// Só deixa ligar contas não originais quando o servidor está pronto para barrar impostores.
+async fn check_offline_ready(state: &AppState, server_id: Uuid) -> ApiResult<()> {
+    let agent_version: Option<String> = sqlx::query_scalar("SELECT agent_version FROM agents WHERE server_id = $1")
+        .bind(server_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten();
+    if !agent_version.as_deref().is_some_and(companion_supports_tickets) {
+        return Err(ApiError::bad(
+            "Para aceitar contas não originais, instale o Conexão Companion 0.2 ou mais novo no servidor.",
+        ));
+    }
+    if !state.agents.is_connected(server_id) {
+        return Err(ApiError::bad("Ligue o servidor com o Companion conectado e tente de novo."));
+    }
+    let info: Option<serde_json::Value> = sqlx::query_scalar("SELECT info FROM server_snapshots WHERE server_id = $1")
+        .bind(server_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten();
+    let info: Option<conexao_types::agent::ServerInfo> = info.and_then(|v| serde_json::from_value(v).ok());
+    let Some(info) = info else {
+        return Err(ApiError::bad("O Companion ainda não enviou os dados do servidor. Tente de novo em instantes."));
+    };
+    if info.online_mode {
+        return Err(ApiError::bad(
+            "Defina online-mode=false no server.properties e reinicie o servidor antes de aceitar contas não originais.",
+        ));
+    }
+    if info.enforce_secure_profile == Some(true) {
+        return Err(ApiError::bad(
+            "Defina enforce-secure-profile=false no server.properties: sem isso, contas não originais são expulsas.",
+        ));
+    }
+    Ok(())
 }
 
 pub async fn update(
@@ -310,12 +363,16 @@ pub async fn update(
         return Err(ApiError::bad("A descrição pode ter no máximo 2000 caracteres."));
     }
     let tags = patch.tags.as_deref().map(validate_tags).transpose()?;
+    if patch.allow_offline == Some(true) {
+        check_offline_ready(&state, id).await?;
+    }
     sqlx::query(
         "UPDATE servers SET
             name = COALESCE($2, name), description = COALESCE($3, description),
             address = COALESCE($4, address), tags = COALESCE($5, tags),
             icon_url = COALESCE($6, icon_url), banner_url = COALESCE($7, banner_url),
-            discord_url = COALESCE($8, discord_url), whitelist_required = COALESCE($9, whitelist_required)
+            discord_url = COALESCE($8, discord_url), whitelist_required = COALESCE($9, whitelist_required),
+            allow_offline = COALESCE($10, allow_offline)
           WHERE id = $1",
     )
     .bind(id)
@@ -327,11 +384,16 @@ pub async fn update(
     .bind(&patch.banner_url)
     .bind(&patch.discord_url)
     .bind(patch.whitelist_required)
+    .bind(patch.allow_offline)
     .execute(&state.pool)
     .await?;
-    audit(&state.pool, Some(id), Some(user.id), "server.updated", json!({})).await?;
-    if patch.whitelist_required.is_some() {
+    audit(&state.pool, Some(id), Some(user.id), "server.updated", json!({ "allow_offline": patch.allow_offline })).await?;
+    // Ligar/desligar contas não originais troca os UUIDs da whitelist (online ↔ offline).
+    if patch.whitelist_required.is_some() || patch.allow_offline.is_some() {
         crate::agents::push_whitelist(&state, id).await?;
+    }
+    if patch.allow_offline.is_some() {
+        crate::agents::push_join_tickets(&state, id).await?;
     }
     get_one(State(state), MaybeUser(Some(user)), Path(slug)).await
 }
@@ -518,4 +580,18 @@ pub async fn agent_status(
         agent_version: row.as_ref().and_then(|r| r.0.clone()),
         last_seen_at: row.and_then(|r| r.1),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::companion_supports_tickets;
+
+    #[test]
+    fn companion_version_gate() {
+        assert!(companion_supports_tickets("companion-neoforge-0.2.0"));
+        assert!(companion_supports_tickets("companion-fabric-1.0.3"));
+        assert!(!companion_supports_tickets("companion-neoforge-0.1.0"));
+        assert!(!companion_supports_tickets("0.3.0"));
+        assert!(!companion_supports_tickets("companion-neoforge-dev"));
+    }
 }

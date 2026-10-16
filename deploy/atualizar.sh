@@ -89,6 +89,13 @@ if ! grep -qE '^CONEXAO_PROFILE_DOMAIN=.' .env; then
   sed -i '/^CONEXAO_PROFILE_DOMAIN=/d' .env
   printf 'CONEXAO_PROFILE_DOMAIN=%s\n' "$PROFILE_DOMAIN" >> .env
 fi
+# Passe de entrada das contas não originais em join.<domínio> (só registro A, sem AAAA).
+if ! grep -qE '^CONEXAO_JOIN_DOMAIN=.' .env; then
+  JOIN_DOMAIN="join.${API_DOMAIN#api.}"
+  echo "   CONEXAO_JOIN_DOMAIN=$JOIN_DOMAIN (adicionado ao .env; crie o registro A no DNS, sem AAAA)"
+  sed -i '/^CONEXAO_JOIN_DOMAIN=/d' .env
+  printf 'CONEXAO_JOIN_DOMAIN=%s\n' "$JOIN_DOMAIN" >> .env
+fi
 
 passo "Reiniciando os serviços"
 docker compose up -d --remove-orphans

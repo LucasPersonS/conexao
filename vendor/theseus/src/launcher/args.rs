@@ -269,6 +269,8 @@ pub async fn get_minecraft_arguments(
 ) -> crate::Result<Vec<String>> {
     let access_token = credentials.access_token.clone();
     let profile = credentials.maybe_online_profile().await;
+    // Conexão: contas não originais usam o tipo `legacy`, como os launchers offline.
+    let user_type = if credentials.is_offline() { "legacy" } else { "msa" };
     let mut parsed_arguments = Vec::new();
 
     if let Some(arguments) = arguments {
@@ -279,6 +281,7 @@ pub async fn get_minecraft_arguments(
                 parse_minecraft_argument(
                     arg,
                     &access_token,
+                    user_type,
                     &profile.name,
                     profile.id,
                     version,
@@ -298,6 +301,7 @@ pub async fn get_minecraft_arguments(
             parsed_arguments.push(parse_minecraft_argument(
                 &x.replace(' ', TEMPORARY_REPLACE_CHAR),
                 &access_token,
+                user_type,
                 &profile.name,
                 profile.id,
                 version,
@@ -330,6 +334,7 @@ pub async fn get_minecraft_arguments(
 fn parse_minecraft_argument(
     argument: &str,
     access_token: &str,
+    user_type: &str,
     username: &str,
     uuid: Uuid,
     version: &str,
@@ -351,7 +356,7 @@ fn parse_minecraft_argument(
         .replace("${uuid}", &uuid.simple().to_string())
         .replace("${clientid}", "c4502edb-87c6-40cb-b595-64a280cf8906")
         .replace("${user_properties}", "{}")
-        .replace("${user_type}", "msa")
+        .replace("${user_type}", user_type)
         .replace("${version_name}", version)
         .replace("${assets_index_name}", asset_index_name)
         .replace(

@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "gg.conexao.companion.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "server": ["PlayerListMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

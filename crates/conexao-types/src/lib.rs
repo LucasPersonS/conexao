@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod manifest;
 pub mod minecraft;
+pub mod offline;
 pub mod server;
 pub mod signing;
 pub mod whitelist;
@@ -13,4 +14,4 @@ pub mod whitelist;
 pub use manifest::{FilePolicy, FileSide, Loader, LoaderSpec, PackFile, PackManifest};
 pub use minecraft::{MinecraftVersion, MIN_SUPPORTED_MINECRAFT};
 pub use server::{Channel, PackVersionInfo, ServerStatus, ServerSummary};
-pub use whitelist::{AccessResponse, WhitelistPlayer, WhitelistStatus};
+pub use whitelist::{AccessResponse, JoinTicketResponse, WhitelistPlayer, WhitelistStatus};

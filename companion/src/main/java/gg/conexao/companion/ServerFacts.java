@@ -34,6 +34,7 @@ final class ServerFacts {
         info.addProperty("port", Math.max(0, server.getPort()));
         info.addProperty("online_mode", server.usesAuthentication());
         info.addProperty("whitelist", server.getPlayerList().isUsingWhitelist());
+        info.addProperty("enforce_secure_profile", server.enforceSecureProfile());
         return info;
     }
 

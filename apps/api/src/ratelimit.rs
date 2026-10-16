@@ -64,6 +64,9 @@ pub fn classify(method: &Method, path: &str) -> Class {
     let segments: Vec<&str> = path.trim_matches('/').split('/').collect();
     match (method, segments.as_slice()) {
         (&Method::POST, ["auth", "minecraft"]) => Class::Login,
+        (&Method::POST, ["auth", "discord"]) => Class::Login,
+        (&Method::POST, ["auth", "offline", "register" | "session" | "logout"]) => Class::Login,
+        (&Method::POST, ["servers", _, "join-ticket"]) => Class::Login,
         (&Method::POST, ["auth", "publish-token"]) => Class::Login,
         (&Method::POST, ["auth", "pair"]) => Class::PairStart,
         (&Method::POST, ["auth", "pair", "poll"]) => Class::PairPoll,

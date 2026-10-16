@@ -63,7 +63,7 @@ const ROLE_NAMES: Record<string, string> = { owner: 'Dono', admin: 'Admin', mode
             <img :src="`https://mc-heads.net/avatar/${account.uuid}/48`" alt="" />
             <div>
               <strong>{{ account.name }}</strong>
-              <small>Conta Microsoft</small>
+              <small>{{ account.kind === 'offline' ? 'Conta não original (Discord)' : 'Conta Microsoft' }}</small>
             </div>
           </div>
           <button class="item highlight" @click="act(() => go('profile'))"><Icon name="star" :size="16" /> Meu perfil</button>

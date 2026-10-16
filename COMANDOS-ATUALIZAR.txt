@@ -40,8 +40,12 @@ release e atualiza o latest.json (atualizacao automatica + pagina /baixar).
 
 4) JOGADOR QUE JA ESTA COM O ERRO
 ---------------------------------
-Mande ele baixar e instalar de novo pela pagina /baixar do site.
-Instalar por cima resolve: nao precisa apagar nada, contas e instancias ficam.
+Normalmente NAO precisa fazer nada manual: ao abrir o launcher (mesmo na tela
+com o erro), aparece um card no canto inferior direito avisando da versao nova.
+Ele clica em atualizar, o launcher fecha, instala e abre sozinho, ja corrigido.
+
+So precisa baixar manualmente pela pagina /baixar quem instalou uma versao
+antiga, de antes do sistema de atualizacao existir (o card nunca aparece).
 
 Se mesmo assim nao abrir (ultimo recurso, apaga contas/instancias salvas):
   - Feche o launcher

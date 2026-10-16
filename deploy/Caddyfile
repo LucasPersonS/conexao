@@ -76,6 +76,19 @@
 	}
 }
 
+# Passe de entrada das contas não originais. Só registro A no DNS (sem AAAA, sem proxy da
+# Cloudflare): o launcher pede o passe por aqui para a API ver o mesmo IPv4 com que o jogo conecta.
+{$CONEXAO_JOIN_DOMAIN} {
+	import seguranca
+	@passe path_regexp ^/v1/servers/[a-z0-9-]+/join-ticket$
+	handle @passe {
+		reverse_proxy api:8080
+	}
+	handle {
+		respond 404
+	}
+}
+
 # Site público (landing page do instalador): apps/site, HTML estático, sem build.
 {$CONEXAO_SITE_DOMAIN} {
 	encode zstd gzip

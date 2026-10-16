@@ -154,12 +154,16 @@ async fn run_play(app: tauri::AppHandle, ctx: Arc<AppContext>, slug: String, add
     tracker.set(&slug, Stage::Checking, "Verificando acesso");
     let access = ctx.api.access(&slug).await?;
     if !access.can_play {
+        if let Some(reason) = access.reason {
+            return Err(CmdError::new(reason));
+        }
         return Err(CmdError::new(match access.status {
             Some(conexao_types::WhitelistStatus::Banned) => "Você está banido deste servidor.",
             Some(conexao_types::WhitelistStatus::Pending) => "Seu pedido de whitelist ainda está em análise.",
             _ => "Este servidor exige whitelist. Peça acesso antes de jogar.",
         }));
     }
+    let join_url = access.allow_offline.then(|| access.join_url.clone().unwrap_or_else(|| ctx.api.base().to_string()));
 
     let data_dir = app.path().app_data_dir()?;
     let mut registry = registry::load(&data_dir).await;
@@ -206,7 +210,8 @@ async fn run_play(app: tauri::AppHandle, ctx: Arc<AppContext>, slug: String, add
                     InstalledServer { instance_id: entry.instance_id.clone(), version: manifest.version.clone(), etag },
                 );
                 registry::save(&data_dir, &registry).await?;
-                return launch(&app, &ctx, &slug, &address, &data_dir, entry.instance_id.clone()).await;
+                return launch(&app, &ctx, &slug, &address, &data_dir, entry.instance_id.clone(), join_url.as_deref())
+                    .await;
             }
             // Instalação completa (primeira vez, ou Minecraft/loader mudou). Antes, tira o
             // que saiu do modpack: o theseus só conhece os arquivos da primeira instalação.
@@ -242,7 +247,7 @@ async fn run_play(app: tauri::AppHandle, ctx: Arc<AppContext>, slug: String, add
             instance_id
         }
     };
-    launch(&app, &ctx, &slug, &address, &data_dir, instance_id).await
+    launch(&app, &ctx, &slug, &address, &data_dir, instance_id, join_url.as_deref()).await
 }
 
 async fn launch(
@@ -252,6 +257,7 @@ async fn launch(
     address: &str,
     data_dir: &Path,
     instance_id: String,
+    join_url: Option<&str>,
 ) -> CmdResult<()> {
     let tracker = &ctx.plays;
     tracker.set(slug, Stage::Launching, "Otimizando para o seu computador");
@@ -261,10 +267,21 @@ async fn launch(
         tracing::warn!("não foi possível aplicar memória/JVM: {}", error.message);
     }
 
+    // Servidor que aceita contas não originais: o Companion só deixa entrar quem tem passe.
+    if let Some(join_url) = join_url {
+        tracker.set(slug, Stage::Launching, "Liberando sua entrada no servidor");
+        let ticket = ctx.api.join_ticket(join_url, slug).await?;
+        if !ticket.companion_online {
+            tracing::warn!(slug, "Companion do servidor offline; o passe será entregue quando ele reconectar");
+        }
+    }
+
     tracker.set(slug, Stage::Launching, "Abrindo o Minecraft");
-    let process =
-        theseus::instance::run(&instance_id, QuickPlayType::Server(ServerAddress::Unresolved(address.to_string())))
-            .await?;
+    let quick_play = QuickPlayType::Server(ServerAddress::Unresolved(address.to_string()));
+    let process = match ctx.api.offline_account() {
+        Some(account) => theseus::instance::run_offline(&instance_id, account.name, account.uuid, quick_play).await?,
+        None => theseus::instance::run(&instance_id, quick_play).await?,
+    };
     tracker.set(slug, Stage::Running, "Em jogo");
     game_started(app, ctx, slug, &launcher_prefs).await;
     let _ = theseus::process::wait_for(process.uuid).await;

@@ -40,10 +40,12 @@ final class CompanionService {
     private volatile boolean running;
     private volatile WebSocket socket;
     private volatile Map<String, Path> mods = Map.of();
+    private final JoinGuard guard;
 
-    CompanionService(MinecraftServer server, CompanionConfig config) {
+    CompanionService(MinecraftServer server, CompanionConfig config, JoinGuard guard) {
         this.server = server;
         this.config = config;
+        this.guard = guard;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
         this.worker = Executors.newSingleThreadExecutor(r -> {
             Thread thread = new Thread(r, "Conexão Companion");
@@ -267,6 +269,14 @@ final class CompanionService {
                     }
                 });
             }
+            case "join_tickets" -> {
+                guard.reset(message);
+                if (guard.enforcing() && server.enforceSecureProfile()) {
+                    ConexaoCompanion.LOG.warn("enforce-secure-profile=true: contas não originais serão expulsas. "
+                            + "Defina enforce-secure-profile=false no server.properties.");
+                }
+            }
+            case "join_ticket" -> guard.add(message);
             case "upload_files" -> CompletableFuture.runAsync(() -> upload(message.getAsJsonArray("sha1")), tasks);
             case "command" -> command(message.get("id").getAsString(), message.get("command").getAsString());
             default -> ConexaoCompanion.LOG.debug("Mensagem ignorada: {}", type);

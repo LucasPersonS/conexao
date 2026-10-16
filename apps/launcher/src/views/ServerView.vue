@@ -103,8 +103,14 @@ async function copyAddress() {
               <span>{{
                 server.whitelist_required
                   ? 'Clique em Pedir whitelist e aguarde a equipe aprovar. Acompanhe pelo Discord do servidor.'
-                  : 'Qualquer jogador com Minecraft original pode entrar.'
+                  : server.allow_offline
+                    ? 'Qualquer jogador pode entrar, com ou sem Minecraft original.'
+                    : 'Qualquer jogador com Minecraft original pode entrar.'
               }}</span>
+            </li>
+            <li v-if="server.allow_offline" class="done">
+              <b>Aceita contas não originais</b>
+              <span>Quem entrou com o Discord também joga. Entre sempre pelo Conexão: o servidor só libera quem vem pelo launcher.</span>
             </li>
             <li>
               <b>Instale o modpack</b>

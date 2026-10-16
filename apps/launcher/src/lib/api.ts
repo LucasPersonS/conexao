@@ -28,6 +28,8 @@ export interface ServerSummary {
   status: ServerStatus
   current_version: string | null
   pack_size: number | null
+  /** Aceita contas não originais (login pelo Discord). */
+  allow_offline?: boolean
 }
 
 export type WhitelistStatus = 'pending' | 'approved' | 'rejected' | 'banned'
@@ -37,12 +39,24 @@ export interface AccessResponse {
   whitelist_required: boolean
   status: WhitelistStatus | null
   can_play: boolean
+  allow_offline?: boolean
+  /** Motivo para mostrar quando não pode jogar por outra razão que a whitelist. */
+  reason?: string | null
 }
+
+export type AccountKind = 'microsoft' | 'offline'
 
 export interface Account {
   uuid: string
   name: string
+  /** microsoft = conta original; offline = conta não original (Discord). */
+  kind: AccountKind
 }
+
+export type DiscordLogin =
+  | { status: 'cancelled' }
+  | { status: 'ok'; account: Account }
+  | { status: 'needs_nick'; signup_token: string; discord_name: string; suggested_nick: string | null }
 
 export type Stage = 'idle' | 'checking' | 'installing' | 'launching' | 'running' | 'error'
 
@@ -189,6 +203,8 @@ export const api = {
   takeInvite: () => invoke<string | null>('take_invite'),
   currentAccount: () => invoke<Account | null>('current_account'),
   login: () => invoke<Account | null>('login_microsoft'),
+  loginDiscord: () => invoke<DiscordLogin>('login_discord'),
+  registerOffline: (signupToken: string, nick: string) => invoke<Account>('register_offline', { signupToken, nick }),
   logout: () => invoke<void>('logout'),
   session: () => invoke<unknown>('conexao_session'),
   servers: () => invoke<ServerSummary[]>('list_servers'),

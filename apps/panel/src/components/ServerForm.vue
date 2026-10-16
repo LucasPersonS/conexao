@@ -16,6 +16,7 @@ export interface ServerFormValue {
   banner_url: string
   discord_url: string
   whitelist_required: boolean
+  allow_offline: boolean
 }
 
 const props = defineProps<{ initial: ServerFormValue; creating: boolean; busy: boolean }>()
@@ -115,6 +116,22 @@ async function upload(kind: 'icon' | 'banner', file: File) {
       </label>
     </div>
 
+    <div v-if="!creating" class="offline">
+      <label class="check">
+        <input v-model="form.allow_offline" type="checkbox" />
+        Aceitar contas não originais (login pelo Discord)
+      </label>
+      <p class="hint muted">
+        Exige o Conexão Companion 0.2 ou mais novo conectado, <code>online-mode=false</code> e
+        <code>enforce-secure-profile=false</code> no <code>server.properties</code>. O Companion só deixa entrar quem
+        clicou em Jogar no launcher, então ninguém entra com o nick de outra pessoa.
+      </p>
+      <p v-if="form.allow_offline !== initial.allow_offline" class="hint warn-text">
+        Atenção: ao trocar, o UUID dos jogadores no servidor muda (online ↔ offline). Inventários e dados salvos
+        pelo UUID antigo não aparecem para eles. Faça isso antes de abrir o servidor ou migre os dados.
+      </p>
+    </div>
+
     <div class="actions">
       <slot name="extra" />
       <button class="btn btn-primary" :disabled="busy">{{ busy ? 'Salvando…' : creating ? 'Cadastrar servidor' : 'Salvar alterações' }}</button>
@@ -123,6 +140,16 @@ async function upload(kind: 'icon' | 'banner', file: File) {
 </template>
 
 <style scoped>
+.offline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
 .form {
   display: flex;
   flex-direction: column;

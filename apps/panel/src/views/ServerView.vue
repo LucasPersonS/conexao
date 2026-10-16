@@ -68,6 +68,7 @@ const formValue = computed<ServerFormValue | null>(() =>
         banner_url: server.value.banner_url ?? '',
         discord_url: server.value.discord_url ?? '',
         whitelist_required: server.value.whitelist_required,
+        allow_offline: server.value.allow_offline ?? false,
       }
     : null,
 )
@@ -88,6 +89,8 @@ async function save(value: ServerFormValue) {
       banner_url: orNull(value.banner_url),
       discord_url: orNull(value.discord_url),
       whitelist_required: value.whitelist_required,
+      // Só quando muda: ligar exige o Companion conectado (a API confere na hora).
+      ...(value.allow_offline !== (server.value?.allow_offline ?? false) ? { allow_offline: value.allow_offline } : {}),
     })
     await loadSession()
     saved.value = true

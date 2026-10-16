@@ -82,13 +82,15 @@ set_env CONEXAO_DOMAIN "$API"
 set_env CONEXAO_PANEL_DOMAIN "$PAINEL"
 set_env CONEXAO_SITE_DOMAIN "$DOMINIO_ASCII"
 set_env CONEXAO_PROFILE_DOMAIN "perfil.$DOMINIO_ASCII"
+# Passe de entrada das contas não originais: só registro A (sem AAAA), para o IP ser IPv4.
+set_env CONEXAO_JOIN_DOMAIN "join.$DOMINIO_ASCII"
 set_env CONEXAO_CORS_ORIGINS "https://$PAINEL"
 [ -n "$STAFF_UUID" ] && set_env CONEXAO_STAFF_UUIDS "$STAFF_UUID"
 chmod 600 .env
 
 passo "Conferindo o DNS"
 IP_VPS=$(curl -fsS4 https://api.ipify.org || true)
-for nome in "$API" "$PAINEL" "$DOMINIO_ASCII" "www.$DOMINIO_ASCII" "perfil.$DOMINIO_ASCII"; do
+for nome in "$API" "$PAINEL" "$DOMINIO_ASCII" "www.$DOMINIO_ASCII" "perfil.$DOMINIO_ASCII" "join.$DOMINIO_ASCII"; do
   aponta=$(dig +short A "$nome" | tail -n1)
   if [ "$aponta" = "$IP_VPS" ]; then
     echo "   $nome -> $aponta (ok)"

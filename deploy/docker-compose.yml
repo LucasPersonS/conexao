@@ -55,6 +55,10 @@ services:
       CONEXAO_MAX_UPLOAD_MB: ${CONEXAO_MAX_UPLOAD_MB:-100}
       CONEXAO_MAX_PENDING_SERVERS: ${CONEXAO_MAX_PENDING_SERVERS:-3}
       CONEXAO_DOWNLOAD_URL: ${CONEXAO_DOWNLOAD_URL:-}
+      # Contas não originais: login pelo Discord e passe de entrada (docs/contas-nao-originais.md)
+      CONEXAO_DISCORD_CLIENT_ID: ${CONEXAO_DISCORD_CLIENT_ID:-}
+      CONEXAO_DISCORD_CLIENT_SECRET: ${CONEXAO_DISCORD_CLIENT_SECRET:-}
+      CONEXAO_JOIN_DOMAIN: ${CONEXAO_JOIN_DOMAIN:-}
       # Monitoramento (docs/monitoramento.md)
       CONEXAO_ALERT_WEBHOOK: ${CONEXAO_ALERT_WEBHOOK:-}
       CONEXAO_DISK_WARN_PERCENT: ${CONEXAO_DISK_WARN_PERCENT:-85}
@@ -130,6 +134,7 @@ services:
       CONEXAO_PANEL_DOMAIN: ${CONEXAO_PANEL_DOMAIN:?defina CONEXAO_PANEL_DOMAIN no .env}
       CONEXAO_SITE_DOMAIN: ${CONEXAO_SITE_DOMAIN:?defina CONEXAO_SITE_DOMAIN no .env (ex. conexaosmps.com.br)}
       CONEXAO_PROFILE_DOMAIN: ${CONEXAO_PROFILE_DOMAIN:?defina CONEXAO_PROFILE_DOMAIN no .env (ex. perfil.conexaosmps.com.br)}
+      CONEXAO_JOIN_DOMAIN: ${CONEXAO_JOIN_DOMAIN:?defina CONEXAO_JOIN_DOMAIN no .env (ex. join.conexaosmps.com.br)}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../apps/panel/dist:/srv/panel:ro

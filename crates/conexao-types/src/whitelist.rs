@@ -45,4 +45,23 @@ pub struct AccessResponse {
     pub whitelist_required: bool,
     pub status: Option<WhitelistStatus>,
     pub can_play: bool,
+    /// O servidor aceita contas não originais (`online-mode=false` + passe de entrada).
+    #[serde(default)]
+    pub allow_offline: bool,
+    /// Onde pedir o passe de entrada (endereço só IPv4 da API). Só com `allow_offline`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join_url: Option<String>,
+    /// Motivo para mostrar ao jogador quando `can_play` é falso por outra razão que a whitelist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Resposta de `POST /v1/servers/{slug}/join-ticket`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JoinTicketResponse {
+    /// Nick com que o jogo deve entrar.
+    pub name: String,
+    pub expires_in: u64,
+    /// O Companion do servidor está conectado ao Conexão agora?
+    pub companion_online: bool,
 }

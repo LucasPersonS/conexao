@@ -12,6 +12,10 @@ description='''${mod_description}'''
 # Só roda no servidor: jogadores entram sem precisar do mod.
 displayTest="IGNORE_ALL_VERSION"
 
+# Passe de entrada (contas não originais): confere junto com ban e whitelist.
+[[mixins]]
+config="conexao_companion.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId="neoforge"
 type="required"

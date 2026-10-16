@@ -24,6 +24,19 @@ pub enum ToAgent {
     /// Executa um comando de console via RCON (apenas comandos permitidos).
     Command { id: Uuid, command: String },
     Ping,
+    /// Companion: o servidor aceita contas não originais? Com `enforce`, só entra (em
+    /// `online-mode=false`) quem tem passe de entrada. Vem com os passes ainda válidos.
+    JoinTickets { enforce: bool, tickets: Vec<JoinTicket> },
+    /// Companion: passe novo, emitido quando o jogador clica em Jogar no launcher.
+    JoinTicket(JoinTicket),
+}
+
+/// Passe de entrada: o nick `name` pode entrar vindo de `ip` até `expires_in` segundos.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JoinTicket {
+    pub name: String,
+    pub ip: String,
+    pub expires_in: u64,
 }
 
 /// Agente → API.
@@ -62,6 +75,10 @@ pub struct ServerInfo {
     pub online_mode: bool,
     #[serde(default)]
     pub whitelist: bool,
+    /// `enforce-secure-profile` do `server.properties` (Companion 0.2+). Precisa ser `false`
+    /// para contas não originais entrarem.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enforce_secure_profile: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,6 +121,11 @@ mod tests {
         assert!(matches!(info, FromAgent::ServerInfo(ServerInfo { max_players: 50, .. })));
         let sync = ToAgent::WhitelistSync { players: vec![], required: Some(true) };
         assert_eq!(serde_json::to_string(&sync).unwrap(), r#"{"type":"whitelist_sync","players":[],"required":true}"#);
+        let ticket = ToAgent::JoinTicket(JoinTicket { name: "Lucas".into(), ip: "203.0.113.7".into(), expires_in: 600 });
+        assert_eq!(
+            serde_json::to_string(&ticket).unwrap(),
+            r#"{"type":"join_ticket","name":"Lucas","ip":"203.0.113.7","expires_in":600}"#
+        );
     }
 
     #[test]

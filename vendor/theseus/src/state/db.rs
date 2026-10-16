@@ -87,7 +87,7 @@ async fn repair_line_ending_checksums(
         let lf = migration.sql.replace("\r\n", "\n");
         let crlf = lf.replace('\n', "\r\n");
         let only_line_endings_differ = [lf, crlf].iter().any(|sql| {
-            Sha384::digest(sql.as_bytes()).as_slice() == stored.as_slice()
+            Sha384::digest(sql.as_bytes())[..] == stored[..]
         });
 
         if only_line_endings_differ {

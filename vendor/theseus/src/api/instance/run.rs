@@ -24,6 +24,31 @@ pub async fn run(
     instance_id: &str,
     quick_play_type: QuickPlayType,
 ) -> crate::Result<ProcessMetadata> {
+    prepare_run(instance_id).await?;
+    let state = State::get().await?;
+    let default_account = Credentials::get_default_credential(&state.pool)
+        .await?
+        .ok_or_else(|| crate::ErrorKind::NoCredentialsError.as_error())?;
+
+    run_credentials(instance_id, &default_account, quick_play_type).await
+}
+
+/// Conexão: inicia a instância com uma conta não original (nick + UUID offline),
+/// para servidores em `online-mode=false`. Nada é enviado à Mojang.
+#[tracing::instrument]
+pub async fn run_offline(
+    instance_id: &str,
+    name: String,
+    uuid: uuid::Uuid,
+    quick_play_type: QuickPlayType,
+) -> crate::Result<ProcessMetadata> {
+    prepare_run(instance_id).await?;
+    let credentials = Credentials::offline(name, uuid);
+    run_credentials(instance_id, &credentials, quick_play_type).await
+}
+
+/// Checagens e migrações feitas antes de qualquer execução.
+async fn prepare_run(instance_id: &str) -> crate::Result<()> {
     let state = State::get().await?;
     if crate::state::instances::adapters::sqlite::instance_rows::is_instance_quarantined(
         instance_id,
@@ -51,12 +76,7 @@ pub async fn run(
         &state,
     )
     .await?;
-
-    let default_account = Credentials::get_default_credential(&state.pool)
-        .await?
-        .ok_or_else(|| crate::ErrorKind::NoCredentialsError.as_error())?;
-
-    run_credentials(instance_id, &default_account, quick_play_type).await
+    Ok(())
 }
 
 #[tracing::instrument(skip(credentials))]
@@ -244,6 +264,7 @@ async fn run_credentials(
 
     if let Some(project_id) = server_play_project_id(&context.link)
         && !project_id.trim().is_empty()
+        && !credentials.is_offline()
     {
         let server_id = uuid::Uuid::new_v4().to_string();
         let join_result = fetch::INSECURE_REQWEST_CLIENT
@@ -291,7 +312,9 @@ async fn run_credentials(
         }
     }
 
-    crate::minecraft_skins::flush_pending_skin_change().await?;
+    if !credentials.is_offline() {
+        crate::minecraft_skins::flush_pending_skin_change().await?;
+    }
     crate::launcher::launch_minecraft(
         &java_args,
         &launch_env_args,

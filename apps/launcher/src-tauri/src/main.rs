@@ -103,6 +103,9 @@ fn main() {
         .manage(Arc::clone(&context))
         .manage(deeplink::PendingInvite::default())
         .setup(move |app| {
+            if let Ok(dir) = app.path().app_data_dir() {
+                context.api.set_data_dir(dir);
+            }
             // Em desenvolvimento o instalador não registrou o esquema conexao://.
             #[cfg(all(debug_assertions, any(windows, target_os = "linux")))]
             if let Err(error) = app.deep_link().register_all() {
@@ -128,6 +131,8 @@ fn main() {
             deeplink::take_invite,
             account::current_account,
             account::login_microsoft,
+            account::login_discord,
+            account::register_offline,
             account::logout,
             conexao_api::conexao_session,
             conexao_api::list_servers,

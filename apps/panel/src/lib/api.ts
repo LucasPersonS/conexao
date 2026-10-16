@@ -38,6 +38,8 @@ export interface Server {
   banner_url: string | null
   discord_url: string | null
   whitelist_required: boolean
+  /** Aceita contas não originais (login pelo Discord + passe de entrada do Companion). */
+  allow_offline?: boolean
   status: { online: boolean; players_online: number; players_max: number; latency_ms: number | null; checked_at: string | null }
   current_version: string | null
   approval: 'pending' | 'approved' | 'rejected' | 'suspended'
@@ -186,6 +188,7 @@ export interface CompanionInfo {
   port: number
   online_mode: boolean
   whitelist: boolean
+  enforce_secure_profile?: boolean
 }
 
 export interface LinkView {

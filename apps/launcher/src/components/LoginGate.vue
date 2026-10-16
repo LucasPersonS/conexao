@@ -1,10 +1,31 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import banner from '../assets/banner.jpg'
 import logo from '../assets/logo.png'
 import wordmark from '../assets/wordmark.png'
+import Icon from './Icon.vue'
 
-defineProps<{ busy: boolean; error: string | null }>()
-defineEmits<{ login: [] }>()
+/** Primeiro acesso pelo Discord: falta escolher o nick. */
+export interface Signup {
+  discord_name: string
+  suggested_nick: string | null
+}
+
+const props = defineProps<{ busy: boolean; error: string | null; signup: Signup | null }>()
+const emit = defineEmits<{ login: []; discord: []; register: [nick: string]; cancelSignup: [] }>()
+
+const nick = ref('')
+const NICK = /^[A-Za-z0-9_]{3,16}$/
+
+watch(
+  () => props.signup,
+  (signup) => (nick.value = signup?.suggested_nick ?? ''),
+  { immediate: true },
+)
+
+function submit() {
+  if (NICK.test(nick.value.trim())) emit('register', nick.value.trim())
+}
 </script>
 
 <template>
@@ -14,16 +35,48 @@ defineEmits<{ login: [] }>()
       <span class="corner tl" /><span class="corner tr" /><span class="corner bl" /><span class="corner br" />
       <img :src="logo" alt="" class="logo" />
       <img :src="wordmark" alt="Conexão" class="wordmark" />
-      <p>Os servidores de Minecraft Roleplay num só lugar. Entre com a conta Microsoft que tem o Minecraft Java.</p>
-      <button class="btn btn-primary wide" :disabled="busy" @click="$emit('login')">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-          <rect x="1" y="1" width="6.5" height="6.5" fill="currentColor" />
-          <rect x="8.5" y="1" width="6.5" height="6.5" fill="currentColor" />
-          <rect x="1" y="8.5" width="6.5" height="6.5" fill="currentColor" />
-          <rect x="8.5" y="8.5" width="6.5" height="6.5" fill="currentColor" />
-        </svg>
-        {{ busy ? 'Aguardando login…' : 'Entrar com Microsoft' }}
-      </button>
+
+      <form v-if="signup" class="signup" @submit.prevent="submit">
+        <p>
+          Olá, <b>{{ signup.discord_name }}</b>! Escolha o nick que você vai usar nos servidores. Ele não pode ser
+          trocado depois.
+        </p>
+        <input
+          v-model="nick"
+          class="nick"
+          maxlength="16"
+          placeholder="SeuNick"
+          autocomplete="off"
+          spellcheck="false"
+          autofocus
+          :disabled="busy"
+        />
+        <small class="rule" :class="{ bad: nick && !NICK.test(nick.trim()) }">3 a 16 caracteres: letras, números e _</small>
+        <button class="btn btn-primary wide" type="submit" :disabled="busy || !NICK.test(nick.trim())">
+          {{ busy ? 'Criando conta…' : 'Criar conta e entrar' }}
+        </button>
+        <button class="link" type="button" :disabled="busy" @click="emit('cancelSignup')">Voltar</button>
+      </form>
+
+      <template v-else>
+        <p>Os servidores de Minecraft Roleplay num só lugar. Entre com a conta Microsoft que tem o Minecraft Java.</p>
+        <button class="btn btn-primary wide" :disabled="busy" @click="emit('login')">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <rect x="1" y="1" width="6.5" height="6.5" fill="currentColor" />
+            <rect x="8.5" y="1" width="6.5" height="6.5" fill="currentColor" />
+            <rect x="1" y="8.5" width="6.5" height="6.5" fill="currentColor" />
+            <rect x="8.5" y="8.5" width="6.5" height="6.5" fill="currentColor" />
+          </svg>
+          {{ busy ? 'Aguardando login…' : 'Entrar com Microsoft' }}
+        </button>
+        <div class="or"><span>ou</span></div>
+        <button class="btn wide discord" :disabled="busy" @click="emit('discord')">
+          <Icon name="users" :size="18" />
+          Jogar sem conta original
+        </button>
+        <small class="note">Entra com o Discord. Funciona só nos servidores que aceitam contas não originais.</small>
+      </template>
+
       <p v-if="error" class="error">{{ error }}</p>
     </div>
   </section>
@@ -125,5 +178,72 @@ p {
 .error {
   margin: 16px 0 0;
   color: var(--bad);
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.discord:hover:not(:disabled) {
+  border-color: #5865f2;
+  background: rgba(88, 101, 242, 0.16);
+}
+
+.note,
+.rule {
+  display: block;
+  margin-top: 10px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.rule.bad {
+  color: var(--bad);
+}
+
+.signup p {
+  margin-bottom: 18px;
+}
+
+.nick {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-input);
+  font-size: 16px;
+  text-align: center;
+  outline: none;
+}
+
+.nick:focus {
+  border-color: var(--lime);
+  box-shadow: 0 0 0 3px var(--lime-soft);
+}
+
+.signup .rule {
+  margin: 8px 0 18px;
+}
+
+.link {
+  margin-top: 12px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-decoration: underline;
 }
 </style>

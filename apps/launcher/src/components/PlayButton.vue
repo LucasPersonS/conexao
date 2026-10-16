@@ -94,6 +94,7 @@ const primary = computed<Primary>(() => {
   const a = access.value
   if (!a) return { label: accessError.value ? 'Indisponível' : 'Verificando…', action: 'none' }
   if (!a.can_play) {
+    if (a.reason) return { label: 'Só contas originais', action: 'none', tone: 'warn', hint: a.reason }
     switch (a.status) {
       case 'pending':
         return {

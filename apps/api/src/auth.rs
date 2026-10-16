@@ -52,6 +52,19 @@ pub struct User {
     pub minecraft_uuid: Uuid,
     pub minecraft_name: String,
     pub is_staff: bool,
+    /// `microsoft` (conta original) ou `offline` (conta não original, login pelo Discord).
+    pub account_type: String,
+}
+
+pub const ACCOUNT_OFFLINE: &str = "offline";
+
+/// Colunas da tabela `users` lidas por `query_as::<_, User>`.
+pub const USER_COLUMNS: &str = "id, minecraft_uuid, minecraft_name, is_staff, account_type";
+
+impl User {
+    pub fn is_offline(&self) -> bool {
+        self.account_type == ACCOUNT_OFFLINE
+    }
 }
 
 pub fn issue_token(state: &AppState, user: &User) -> ApiResult<String> {
@@ -129,9 +142,7 @@ async fn user_from_parts(parts: &Parts, state: &AppState) -> ApiResult<Option<Us
         Some(SCOPE_PUBLISH) if publish_scope_allows(&parts.method, parts.uri.path()) => {}
         Some(_) => return Err(ApiError::Forbidden),
     }
-    let user = sqlx::query_as::<_, User>(
-        "SELECT id, minecraft_uuid, minecraft_name, is_staff FROM users WHERE id = $1",
-    )
+    let user = sqlx::query_as::<_, User>(&format!("SELECT {USER_COLUMNS} FROM users WHERE id = $1"))
     .bind(data.claims.sub)
     .fetch_optional(&state.pool)
     .await?
@@ -280,16 +291,31 @@ pub async fn lookup_minecraft_name(state: &AppState, name: &str) -> ApiResult<(U
     Ok((uuid, profile.name))
 }
 
-/// Cria ou atualiza o usuário pelo UUID Minecraft.
+/// O nick pertence a uma conta original? `Ok(false)` só quando a Mojang confirma que não existe.
+pub async fn minecraft_name_exists(state: &AppState, name: &str) -> ApiResult<bool> {
+    let response = state
+        .http
+        .get(format!("{}/{}", state.config.mojang_lookup_url, name))
+        .send()
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?;
+    match response.status() {
+        reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::NO_CONTENT => Ok(false),
+        status if status.is_success() => Ok(true),
+        status => Err(ApiError::Internal(eyre::eyre!("Mojang respondeu {status} ao consultar o nick"))),
+    }
+}
+
+/// Cria ou atualiza o usuário (conta original) pelo UUID Minecraft.
 pub async fn upsert_user(pool: &PgPool, minecraft_uuid: Uuid, name: &str, login: bool) -> ApiResult<User> {
-    let user = sqlx::query_as::<_, User>(
+    let user = sqlx::query_as::<_, User>(&format!(
         "INSERT INTO users (id, minecraft_uuid, minecraft_name)
          VALUES ($1, $2, $3)
          ON CONFLICT (minecraft_uuid) DO UPDATE
             SET minecraft_name = EXCLUDED.minecraft_name,
                 last_login_at = CASE WHEN $4 THEN now() ELSE users.last_login_at END
-         RETURNING id, minecraft_uuid, minecraft_name, is_staff",
-    )
+         RETURNING {USER_COLUMNS}"
+    ))
     .bind(Uuid::new_v4())
     .bind(minecraft_uuid)
     .bind(name)

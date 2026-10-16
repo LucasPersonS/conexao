@@ -264,7 +264,27 @@ impl OnlineProfileCacheIntent {
     }
 }
 
+/// Conexão: access token usado pelas contas não originais. Nunca é enviado à Mojang.
+pub const OFFLINE_ACCESS_TOKEN: &str = "0";
+
 impl Credentials {
+    /// Conexão: credenciais de uma conta não original (servidores em `online-mode=false`).
+    /// Não são salvas no banco do theseus; o launcher as monta a cada execução.
+    pub fn offline(name: String, id: Uuid) -> Self {
+        Self {
+            offline_profile: MinecraftProfile { id, name, ..MinecraftProfile::default() },
+            access_token: OFFLINE_ACCESS_TOKEN.to_string(),
+            refresh_token: String::new(),
+            expires: Utc::now() + Duration::days(1),
+            active: false,
+        }
+    }
+
+    /// Conexão: `true` para credenciais criadas por [`Credentials::offline`].
+    pub fn is_offline(&self) -> bool {
+        self.access_token == OFFLINE_ACCESS_TOKEN
+    }
+
     /// Refreshes the authentication tokens for this user if they are expired, or
     /// very close to expiration.
     async fn refresh(
@@ -351,6 +371,9 @@ impl Credentials {
         &self,
         cache_intent: OnlineProfileCacheIntent,
     ) -> Option<Arc<MinecraftProfile>> {
+        if self.is_offline() {
+            return None;
+        }
         let max_age = cache_intent.max_age();
         let stale_profile = {
             let mut profile_cache = PROFILE_CACHE.lock().await;

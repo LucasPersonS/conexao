@@ -5,7 +5,9 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import org.slf4j.Logger;
@@ -34,11 +36,18 @@ public final class ConexaoCompanion {
         }
         NeoForge.EVENT_BUS.addListener(this::onStarted);
         NeoForge.EVENT_BUS.addListener(this::onStopping);
+        NeoForge.EVENT_BUS.addListener(this::onLogout);
+    }
+
+    private void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            JoinGuard.INSTANCE.onLogout(player.getGameProfile().getName());
+        }
     }
 
     private void onStarted(ServerStartedEvent event) {
         MinecraftServer server = event.getServer();
-        service = new CompanionService(server, CompanionConfig.load());
+        service = new CompanionService(server, CompanionConfig.load(), JoinGuard.INSTANCE);
         service.start();
     }
 
