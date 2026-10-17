@@ -74,6 +74,16 @@ pub struct Config {
     /// Endereço só IPv4 da API (registro A, sem AAAA) usado para pedir o passe de entrada,
     /// para o IP registrado ser o mesmo com que o jogo conecta. Sem ele, usa `public_url`.
     pub join_url: Option<String>,
+    /// Lista de espera (`CONEXAO_WAITLIST`): só entra no launcher quem a equipe liberou.
+    pub waitlist: bool,
+    /// Site público (`CONEXAO_SITE_URL` ou `https://<CONEXAO_SITE_DOMAIN>`), onde fica a lista.
+    pub site_url: String,
+    /// Redirect do login pelo Discord no site. Padrão: `<site_url>/v1/waitlist/discord/callback`.
+    pub waitlist_redirect_uri: String,
+    /// IDs do Discord da equipe Conexão: veem o botão de instalar no site sem entrar na fila.
+    pub staff_discord_ids: Vec<String>,
+    /// Convite da comunidade no Discord, mostrado para quem ainda não foi liberado.
+    pub discord_invite: String,
 }
 
 /// Lê `CONEXAO_*`; se não existir, aceita o nome antigo (`CENTRAL_*`) para quem ainda não migrou.
@@ -161,6 +171,9 @@ impl Config {
         if self.join_url.as_deref().is_some_and(|url| !url.starts_with("https://")) {
             missing.push("CONEXAO_JOIN_URL em https");
         }
+        if self.waitlist && !self.waitlist_redirect_uri.starts_with("https://") {
+            missing.push("CONEXAO_SITE_DOMAIN (ou CONEXAO_SITE_URL / CONEXAO_WAITLIST_REDIRECT_URI) em https");
+        }
         if self.allow_private_ping {
             missing.push("CONEXAO_ALLOW_PRIVATE_PING desligado (só para testes locais)");
         }
@@ -183,7 +196,26 @@ impl Config {
         let production = is_production_url(&public_url);
         let discord_redirect_uri = var("CONEXAO_DISCORD_REDIRECT_URI")
             .unwrap_or_else(|| format!("{public_url}/v1/auth/discord/callback"));
+        let site_url = var("CONEXAO_SITE_URL")
+            .or_else(|| var("CONEXAO_SITE_DOMAIN").map(|domain| format!("https://{domain}")))
+            .unwrap_or_else(|| public_url.clone())
+            .trim_end_matches('/')
+            .to_string();
+        let waitlist_redirect_uri = var("CONEXAO_WAITLIST_REDIRECT_URI")
+            .unwrap_or_else(|| format!("{site_url}/v1/waitlist/discord/callback"));
         Ok(Self {
+            waitlist: var("CONEXAO_WAITLIST").is_some_and(|v| v == "1" || v == "true"),
+            waitlist_redirect_uri,
+            site_url,
+            staff_discord_ids: var("CONEXAO_STAFF_DISCORD_IDS")
+                .map(|v| {
+                    v.split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            discord_invite: var("CONEXAO_DISCORD_INVITE").unwrap_or_else(|| "https://discord.gg/conexaosmps".into()),
             discord_client_id: var("CONEXAO_DISCORD_CLIENT_ID"),
             discord_client_secret: var("CONEXAO_DISCORD_CLIENT_SECRET"),
             discord_redirect_uri,

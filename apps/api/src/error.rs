@@ -13,6 +13,9 @@ pub enum ApiError {
     Forbidden,
     #[error("não encontrado")]
     NotFound,
+    /// Conta ainda não liberada na lista de espera (403, código `waitlist`).
+    #[error("{0}")]
+    Waitlist(String),
     #[error("{message}")]
     Conflict { message: String, details: serde_json::Value },
     #[error("erro interno")]
@@ -52,6 +55,7 @@ impl IntoResponse for ApiError {
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             ApiError::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
+            ApiError::Waitlist(_) => (StatusCode::FORBIDDEN, "waitlist"),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             ApiError::Conflict { .. } => (StatusCode::CONFLICT, "conflict"),
             ApiError::Internal(error) => {

@@ -1,3 +1,4 @@
+pub mod community;
 pub mod companion;
 pub mod detect;
 pub mod discord;
@@ -13,6 +14,7 @@ pub mod profiles;
 pub mod servers;
 pub mod storage_admin;
 pub mod versions;
+pub mod waitlist;
 pub mod whitelist;
 
 use std::net::{IpAddr, SocketAddr};
@@ -56,6 +58,16 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/pair/poll", post(pairing::poll))
         .route("/auth/pair/{code}", get(pairing::info))
         .route("/auth/publish-token", post(me::publish_token))
+        // Lista de espera: servida no domínio do site (o Caddy repassa), com cookie próprio.
+        .route("/waitlist/me", get(waitlist::me).post(waitlist::join))
+        .route("/waitlist/sair", post(waitlist::logout))
+        .route("/waitlist/comunidade", get(waitlist::community))
+        .route("/waitlist/discord", get(waitlist::discord_start))
+        .route("/waitlist/discord/callback", get(waitlist::discord_callback))
+        .route("/staff/waitlist", get(waitlist::staff_list))
+        .route("/staff/waitlist/next", post(waitlist::staff_approve_next))
+        .route("/staff/waitlist/manual", post(waitlist::staff_manual))
+        .route("/staff/waitlist/{id}", post(waitlist::staff_decide))
         .route("/signing-key", get(versions::signing_key))
         .route("/meta/minecraft", get(meta::minecraft))
         .route("/meta/loaders/{loader}/{minecraft}", get(meta::loader_versions))
@@ -88,6 +100,10 @@ pub fn router(state: AppState) -> Router {
         .route("/servers/{slug}/posts", get(posts::list).post(posts::create))
         .route("/servers/{slug}/posts/{id}", put(posts::update).delete(posts::remove))
         .route("/events", get(posts::upcoming))
+        .route("/servers/{slug}/star", put(community::star).delete(community::unstar))
+        .route("/me/stars", get(community::my_stars))
+        .route("/servers/{slug}/comments", get(community::list).post(community::create))
+        .route("/servers/{slug}/comments/{id}", delete(community::remove))
         .route("/profile/catalog", get(profiles::get_catalog))
         .route("/me/profile", get(profiles::get_me).put(profiles::put_me))
         .route(

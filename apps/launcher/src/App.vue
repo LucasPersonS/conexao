@@ -10,6 +10,7 @@ import UpdateToast from './components/UpdateToast.vue'
 import logo from './assets/logo.png'
 import { api, errorMessage, type Account, type MyRoles } from './lib/api'
 import { prefs } from './lib/prefs'
+import { clearStars, loadStars } from './lib/stars'
 import { listen } from '@tauri-apps/api/event'
 import { findServer, go, loadServers, openInvite, store } from './lib/store'
 import BrowseView from './views/BrowseView.vue'
@@ -43,6 +44,7 @@ async function afterLogin() {
     store.error = errorMessage(error)
   }
   await loadServers()
+  loadStars()
   // Aberto por um convite (conexao://servidor/<slug>)?
   api.takeInvite().then((slug) => slug && openInvite(slug)).catch(() => {})
   api.myRoles().then((r) => (roles.value = r)).catch(() => (roles.value = null))
@@ -102,6 +104,7 @@ async function logout() {
   await api.logout()
   account.value = null
   roles.value = null
+  clearStars()
   go('home')
 }
 

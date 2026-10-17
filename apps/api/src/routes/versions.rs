@@ -28,6 +28,8 @@ pub async fn manifest(
     Query(query): Query<ChannelQuery>,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
+    // Lista de espera: o modpack só sai para contas liberadas (o launcher manda o token).
+    crate::routes::waitlist::require_session_access(&state, user.as_ref())?;
     let (server_id, approval): (Uuid, String) =
         sqlx::query_as("SELECT id, approval FROM servers WHERE slug = $1")
             .bind(&slug)

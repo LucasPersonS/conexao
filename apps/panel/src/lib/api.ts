@@ -43,6 +43,8 @@ export interface Server {
   status: { online: boolean; players_online: number; players_max: number; latency_ms: number | null; checked_at: string | null }
   current_version: string | null
   approval: 'pending' | 'approved' | 'rejected' | 'suspended'
+  /** Estrelas dadas pelos jogadores no launcher. */
+  stars?: number
 }
 
 export interface VersionItem {
@@ -242,6 +244,27 @@ export interface ServerPost {
   author_name: string | null
 }
 
+export interface ServerComment {
+  id: string
+  body: string
+  created_at: string
+  author_name: string
+  author_uuid: string
+  author_role: Role | null
+  /** Conta não original (cadastrada pelo Discord). */
+  author_offline: boolean
+  mine: boolean
+  can_delete: boolean
+}
+
+export interface CommentPage {
+  total: number
+  stars: number
+  comments: ServerComment[]
+  has_more: boolean
+  viewer: { can_comment: boolean; reason: string | null; can_moderate: boolean }
+}
+
 export interface PostInput {
   kind: 'news' | 'event'
   title: string
@@ -368,6 +391,9 @@ export const api = {
   featuredPurchase: (slug: string, id: string) => request<FeaturedPurchase>('GET', `/v1/servers/${slug}/featured/purchases/${id}`),
   profile: (name: string) => request<PublicProfile>('GET', `/v1/profiles/${encodeURIComponent(name)}`),
   posts: (slug: string) => request<{ news: ServerPost[]; events: ServerPost[] }>('GET', `/v1/servers/${slug}/posts`),
+  comments: (slug: string, before?: string) =>
+    request<CommentPage>('GET', `/v1/servers/${slug}/comments?limit=50${before ? `&before=${encodeURIComponent(before)}` : ''}`),
+  deleteComment: (slug: string, id: string) => request<null>('DELETE', `/v1/servers/${slug}/comments/${id}`),
   createPost: (slug: string, input: PostInput) => request<{ id: string }>('POST', `/v1/servers/${slug}/posts`, input),
   updatePost: (slug: string, id: string, input: PostInput) => request<null>('PUT', `/v1/servers/${slug}/posts/${id}`, input),
   deletePost: (slug: string, id: string) => request<null>('DELETE', `/v1/servers/${slug}/posts/${id}`),
@@ -380,6 +406,11 @@ export const api = {
     request<null>('POST', `/v1/staff/profiles/${encodeURIComponent(name)}/ban`, { ban, reason }),
   backgroundsSeen: (names: string[]) => request<{ seen: number }>('POST', '/v1/staff/backgrounds/seen', { names }),
   staffServers: () => request<Server[]>('GET', '/v1/staff/servers'),
+  waitlist: (status: WaitlistStatus) => request<WaitlistList>('GET', `/v1/staff/waitlist?status=${status}`),
+  decideWaitlist: (id: string, status: WaitlistStatus, note?: string) =>
+    request<WaitlistEntry>('POST', `/v1/staff/waitlist/${id}`, { status, note }),
+  approveNextWaitlist: (count: number) => request<{ approved: number }>('POST', '/v1/staff/waitlist/next', { count }),
+  manualWaitlist: (nick: string) => request<{ nick: string; existing: boolean }>('POST', '/v1/staff/waitlist/manual', { nick }),
   setApproval: (slug: string, approval: string) => request<unknown>('POST', `/v1/staff/servers/${slug}/approval`, { approval }),
   setFeatured: (slug: string, until: string | null) => request<unknown>('POST', `/v1/staff/servers/${slug}/featured`, { until }),
   storage: () => request<StorageOverview>('GET', '/v1/staff/storage'),
@@ -426,6 +457,31 @@ export async function loadSession() {
   const me = await api.me()
   session.user = me.user
   session.memberships = me.memberships
+}
+
+export type WaitlistStatus = 'pending' | 'approved' | 'rejected'
+
+export interface WaitlistEntry {
+  id: string
+  discord_id: string | null
+  discord_name: string
+  discord_avatar: string | null
+  minecraft_name: string
+  minecraft_uuid: string | null
+  account_type: 'microsoft' | 'offline'
+  status: WaitlistStatus
+  note: string
+  created_at: string
+  decided_at: string | null
+  decided_by_name: string | null
+}
+
+export interface WaitlistList {
+  enabled: boolean
+  entries: WaitlistEntry[]
+  pending: number
+  approved: number
+  rejected: number
 }
 
 export function message(error: unknown): string {

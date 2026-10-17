@@ -95,11 +95,19 @@
 	import seguranca
 	header {
 		X-Frame-Options "DENY"
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://cdn.discordapp.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
 	}
 
-	# conexaosmps.com.br/baixar -> o mesmo /baixar da API (instalador da versão mais nova).
-	redir /baixar https://{$CONEXAO_DOMAIN}{uri} 302
+	# Lista de espera: login pelo Discord e situação da fila, com cookie só deste domínio.
+	handle /v1/waitlist/* {
+		reverse_proxy api:8080
+	}
+
+	# conexaosmps.com.br/baixar -> o /baixar da API, passando aqui mesmo para ela ver o cookie
+	# da lista: quem foi liberado recebe o instalador; quem não foi volta para a lista.
+	handle /baixar {
+		reverse_proxy api:8080
+	}
 
 	# latest.json e instaladores no mesmo domínio: o site mostra versão e tamanho sem CORS.
 	handle /launcher/* {

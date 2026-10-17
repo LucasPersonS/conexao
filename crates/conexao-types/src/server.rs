@@ -57,6 +57,9 @@ pub struct ServerSummary {
     /// Aceita contas não originais (login pelo Discord).
     #[serde(default)]
     pub allow_offline: bool,
+    /// Estrelas dadas pelos jogadores no launcher.
+    #[serde(default)]
+    pub stars: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

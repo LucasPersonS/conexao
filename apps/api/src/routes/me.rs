@@ -3,8 +3,9 @@ use axum::extract::State;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::auth::{AuthUser, User, issue_publish_token, issue_token, upsert_user, verify_minecraft_token};
+use crate::auth::{AuthUser, USER_COLUMNS, User, issue_publish_token, issue_token, upsert_user, verify_minecraft_token};
 use crate::error::ApiResult;
+use crate::routes::waitlist;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -24,7 +25,13 @@ pub async fn login_minecraft(
     Json(body): Json<MinecraftLogin>,
 ) -> ApiResult<Json<LoginResponse>> {
     let (uuid, name) = verify_minecraft_token(&state, &body.access_token).await?;
-    let mut user = upsert_user(&state.pool, uuid, &name, true).await?;
+    let existing = sqlx::query_as::<_, User>(&format!("SELECT {USER_COLUMNS} FROM users WHERE minecraft_uuid = $1"))
+        .bind(uuid)
+        .fetch_optional(&state.pool)
+        .await?;
+    waitlist::require_launcher_access(&state, existing.as_ref(), Some(uuid), None).await?;
+    let user = upsert_user(&state.pool, uuid, &name, true).await?;
+    let mut user = waitlist::grant(&state, user).await?;
     if !user.is_staff && state.config.staff_uuids.contains(&uuid) {
         sqlx::query("UPDATE users SET is_staff = TRUE WHERE id = $1").bind(user.id).execute(&state.pool).await?;
         user.is_staff = true;

@@ -30,6 +30,8 @@ export interface ServerSummary {
   pack_size: number | null
   /** Aceita contas não originais (login pelo Discord). */
   allow_offline?: boolean
+  /** Estrelas dadas pelos jogadores. */
+  stars?: number
 }
 
 export type WhitelistStatus = 'pending' | 'approved' | 'rejected' | 'banned'
@@ -191,6 +193,42 @@ export const profiles = {
   report: (name: string, reason: string) => json<null>('POST', `/v1/profiles/${encodeURIComponent(name)}/report`, { reason }),
   uploadBackground: async (file: File) =>
     invoke<OwnProfile>('upload_profile_background', { bytes: Array.from(new Uint8Array(await file.arrayBuffer())) }),
+}
+
+export interface ServerComment {
+  id: string
+  body: string
+  created_at: string
+  author_name: string
+  author_uuid: string
+  /** Papel do autor na equipe do servidor. */
+  author_role: 'owner' | 'admin' | 'moderator' | null
+  author_offline: boolean
+  mine: boolean
+  can_delete: boolean
+}
+
+export interface CommentPage {
+  total: number
+  stars: number
+  comments: ServerComment[]
+  has_more: boolean
+  viewer: { can_comment: boolean; reason: string | null; can_moderate: boolean }
+}
+
+export interface StarState {
+  stars: number
+  starred: boolean
+}
+
+const serverPath = (slug: string) => `/v1/servers/${encodeURIComponent(slug)}`
+
+export const community = {
+  myStars: () => json<string[]>('GET', '/v1/me/stars'),
+  star: (slug: string, on: boolean) => json<StarState>(on ? 'PUT' : 'DELETE', `${serverPath(slug)}/star`),
+  comments: (slug: string) => json<CommentPage>('GET', `${serverPath(slug)}/comments`),
+  comment: (slug: string, body: string) => json<ServerComment>('POST', `${serverPath(slug)}/comments`, { body }),
+  deleteComment: (slug: string, id: string) => json<null>('DELETE', `${serverPath(slug)}/comments/${id}`),
 }
 
 export const posts = {

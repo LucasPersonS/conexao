@@ -34,6 +34,7 @@ pub enum Class {
     CreateServer,
     Upload,
     Report,
+    Comment,
     General,
 }
 
@@ -53,6 +54,7 @@ impl Class {
             Class::CreateServer => (5.0 / 60.0, 5.0),
             Class::Upload => (240.0, 120.0),
             Class::Report => (5.0, 5.0),
+            Class::Comment => (6.0, 3.0),
             Class::General => (300.0, 150.0),
         }
     }
@@ -68,6 +70,7 @@ pub fn classify(method: &Method, path: &str) -> Class {
         (&Method::POST, ["auth", "offline", "register" | "session" | "logout"]) => Class::Login,
         (&Method::POST, ["servers", _, "join-ticket"]) => Class::Login,
         (&Method::POST, ["auth", "publish-token"]) => Class::Login,
+        (&Method::POST, ["waitlist", "me"]) | (&Method::GET, ["waitlist", "discord", "callback"]) => Class::Login,
         (&Method::POST, ["auth", "pair"]) => Class::PairStart,
         (&Method::POST, ["auth", "pair", "poll"]) => Class::PairPoll,
         (&Method::POST, ["auth", "pair", "approve"]) | (&Method::GET, ["auth", "pair", _]) => Class::PairApprove,
@@ -78,6 +81,7 @@ pub fn classify(method: &Method, path: &str) -> Class {
         (&Method::POST, ["servers"]) => Class::CreateServer,
         (&Method::PUT, ["files", _]) => Class::Upload,
         (&Method::POST, ["profiles", _, "report"]) => Class::Report,
+        (&Method::POST, ["servers", _, "comments"]) => Class::Comment,
         _ => Class::General,
     }
 }
@@ -179,6 +183,8 @@ mod tests {
         assert_eq!(classify(&Method::PUT, "/v1/files/da39a3ee5e6b4b0d3255bfef95601890afd80709"), Class::Upload);
         assert_eq!(classify(&Method::POST, "/v1/servers"), Class::CreateServer);
         assert_eq!(classify(&Method::GET, "/v1/servers"), Class::General);
+        assert_eq!(classify(&Method::POST, "/v1/servers/paravexia/comments"), Class::Comment);
+        assert_eq!(classify(&Method::GET, "/v1/servers/paravexia/comments"), Class::General);
         assert_eq!(classify(&Method::GET, "/health"), Class::General);
     }
 

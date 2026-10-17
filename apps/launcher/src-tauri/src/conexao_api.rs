@@ -388,11 +388,31 @@ impl ConexaoApi {
     }
 
     pub async fn manifest(&self, slug: &str, etag: Option<&str>) -> CmdResult<ManifestFetch> {
-        let mut request = self.http.get(format!("{}/v1/servers/{slug}/manifest", self.base));
-        if let Some(etag) = etag {
-            request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+        let request = |token: Option<String>| {
+            let mut request = self.http.get(format!("{}/v1/servers/{slug}/manifest", self.base));
+            if let Some(etag) = etag {
+                request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+            }
+            if let Some(token) = token {
+                request = request.bearer_auth(token);
+            }
+            request
+        };
+        // Com a lista de espera ligada, o modpack só sai para contas liberadas: vai com a sessão
+        // do Conexão quando der (se o login falhar, a API explica o motivo na resposta).
+        let token = match self.token() {
+            Some(token) => Some(token),
+            None => self.login().await.ok().and_then(|_| self.token()),
+        };
+        let had_token = token.is_some();
+        let mut response = request(token).send().await?;
+        if had_token && response.status() == reqwest::StatusCode::UNAUTHORIZED {
+            // JWT vencido (dura 12 h): renova uma vez e tenta de novo.
+            self.clear_token();
+            let token = self.login().await.ok().and_then(|_| self.token());
+            response = request(token).send().await?;
         }
-        let response = Self::check(request.send().await?).await?;
+        let response = Self::check(response).await?;
         if response.status() == reqwest::StatusCode::NOT_MODIFIED {
             return Ok(ManifestFetch::NotModified);
         }
@@ -432,8 +452,9 @@ fn plain_segment(segment: &str) -> bool {
 }
 
 /// Rotas da API que o frontend pode chamar diretamente: perfis (leitura e escrita),
-/// notícias e eventos dos servidores (só leitura). Lista exata, segmento por segmento:
-/// nada de `%2e%2e`, barras invertidas ou parâmetros que mudariam o caminho real.
+/// notícias e eventos dos servidores (só leitura), estrelas e comentários. Lista exata,
+/// segmento por segmento: nada de `%2e%2e`, barras invertidas ou parâmetros que mudariam
+/// o caminho real.
 fn route_allowed(method: &str, path: &str) -> bool {
     if !path.starts_with("/v1/") || !path.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'_' | b'-')) {
         return false;
@@ -444,9 +465,16 @@ fn route_allowed(method: &str, path: &str) -> bool {
     }
     matches!(
         (method, segments.as_slice()),
-        ("GET" | "PUT", ["me", "profile"])
-            | ("GET", ["profile", "catalog"] | ["profiles", _] | ["events"] | ["servers", _, "posts"])
-            | ("POST", ["profiles", _, "report"])
+        (
+            "GET",
+            ["me", "profile" | "stars"]
+                | ["profile", "catalog"]
+                | ["profiles", _]
+                | ["events"]
+                | ["servers", _, "posts" | "comments"]
+        ) | ("PUT", ["me", "profile"] | ["servers", _, "star"])
+            | ("POST", ["profiles", _, "report"] | ["servers", _, "comments"])
+            | ("DELETE", ["servers", _, "star"] | ["servers", _, "comments", _])
     )
 }
 
@@ -464,6 +492,7 @@ pub async fn api_json(
         "GET" => reqwest::Method::GET,
         "PUT" => reqwest::Method::PUT,
         "POST" => reqwest::Method::POST,
+        "DELETE" => reqwest::Method::DELETE,
         _ => return Err(CmdError::new("método não permitido")),
     };
     ctx.api.json(method, &path, body).await
@@ -528,6 +557,14 @@ mod tests {
         assert!(!route_allowed("GET", "/v1/servers/paravexia/whitelist"));
         assert!(!route_allowed("GET", "/v1/servers/a/b/posts"));
         assert!(route_allowed("GET", "/v1/events"));
+        assert!(route_allowed("PUT", "/v1/servers/paravexia/star"));
+        assert!(route_allowed("DELETE", "/v1/servers/paravexia/star"));
+        assert!(route_allowed("GET", "/v1/me/stars"));
+        assert!(route_allowed("GET", "/v1/servers/paravexia/comments"));
+        assert!(route_allowed("POST", "/v1/servers/paravexia/comments"));
+        assert!(route_allowed("DELETE", "/v1/servers/paravexia/comments/0b9f6f0e-3f1d-4c3a-9a51-2a6d1f9c1e77"));
+        assert!(!route_allowed("DELETE", "/v1/servers/paravexia"));
+        assert!(!route_allowed("DELETE", "/v1/servers/paravexia/posts/0b9f6f0e-3f1d-4c3a-9a51-2a6d1f9c1e77"));
         assert!(route_allowed("PUT", "/v1/me/profile"));
         assert!(!route_allowed("GET", "/v1/profiles/../staff/moderation"));
         // Pontos codificados (%2e%2e) viram `..` no cliente HTTP: precisam ser recusados.

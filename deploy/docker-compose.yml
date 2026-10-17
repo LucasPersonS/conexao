@@ -59,6 +59,11 @@ services:
       CONEXAO_DISCORD_CLIENT_ID: ${CONEXAO_DISCORD_CLIENT_ID:-}
       CONEXAO_DISCORD_CLIENT_SECRET: ${CONEXAO_DISCORD_CLIENT_SECRET:-}
       CONEXAO_JOIN_DOMAIN: ${CONEXAO_JOIN_DOMAIN:-}
+      # Lista de espera (docs/lista-de-espera.md): só entra no launcher quem a equipe liberou
+      CONEXAO_WAITLIST: ${CONEXAO_WAITLIST:-true}
+      CONEXAO_SITE_DOMAIN: ${CONEXAO_SITE_DOMAIN:-}
+      CONEXAO_STAFF_DISCORD_IDS: ${CONEXAO_STAFF_DISCORD_IDS:-}
+      CONEXAO_DISCORD_INVITE: ${CONEXAO_DISCORD_INVITE:-https://discord.gg/conexaosmps}
       # Monitoramento (docs/monitoramento.md)
       CONEXAO_ALERT_WEBHOOK: ${CONEXAO_ALERT_WEBHOOK:-}
       CONEXAO_DISK_WARN_PERCENT: ${CONEXAO_DISK_WARN_PERCENT:-85}

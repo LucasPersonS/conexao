@@ -4,6 +4,7 @@ import { bgImage, formatNumber } from '../lib/format'
 import FavoriteButton from './FavoriteButton.vue'
 import PingBars from './PingBars.vue'
 import ServerIcon from './ServerIcon.vue'
+import StarButton from './StarButton.vue'
 
 const props = defineProps<{ server: ServerSummary }>()
 defineEmits<{ open: [] }>()
@@ -18,7 +19,10 @@ const extraTags = () => props.server.tags.length - shownTags().length
     <div class="banner" :style="bgImage(server.banner_url)">
       <span v-if="server.featured" class="badge featured">Destaque</span>
       <span v-if="!server.status.online" class="badge off">Offline</span>
-      <FavoriteButton class="fav" :slug="server.slug" light />
+      <div class="actions">
+        <StarButton :slug="server.slug" :count="server.stars" light />
+        <FavoriteButton class="fav" :slug="server.slug" light />
+      </div>
       <ServerIcon class="icon" :name="server.name" :url="server.icon_url" :size="56" />
     </div>
     <div class="body">
@@ -117,13 +121,22 @@ const extraTags = () => props.server.tags.length - shownTags().length
   left: 86px;
 }
 
-.fav {
+.actions {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 1;
-  width: 32px;
+  display: flex;
+  gap: 6px;
+}
+
+.actions .fav,
+.actions .star {
   height: 32px;
+}
+
+.actions .fav {
+  width: 32px;
 }
 
 .icon {

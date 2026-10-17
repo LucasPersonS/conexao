@@ -5,6 +5,7 @@ import ApprovalBadge from '../components/ApprovalBadge.vue'
 import InviteCard from '../components/InviteCard.vue'
 import FeaturedCard from '../components/FeaturedCard.vue'
 import PostsTab from '../components/PostsTab.vue'
+import CommentsTab from '../components/CommentsTab.vue'
 import ServerForm, { type ServerFormValue } from '../components/ServerForm.vue'
 import VersionsTab from '../components/VersionsTab.vue'
 import WhitelistTab from '../components/WhitelistTab.vue'
@@ -34,6 +35,7 @@ const tabs = computed(() =>
     { id: 'modpack', label: 'Modpack', show: isAdmin.value },
     { id: 'whitelist', label: 'Whitelist', show: true },
     { id: 'novidades', label: 'Eventos e notícias', show: true },
+    { id: 'comentarios', label: 'Comentários', show: true },
     { id: 'equipe', label: 'Equipe', show: true },
     { id: 'servidor', label: 'Servidor', show: isAdmin.value },
     { id: 'historico', label: 'Histórico', show: isAdmin.value },
@@ -52,6 +54,10 @@ async function load() {
   }
 }
 onMounted(load)
+
+function setStars(count: number) {
+  if (server.value) server.value.stars = count
+}
 
 const formValue = computed<ServerFormValue | null>(() =>
   server.value
@@ -127,6 +133,10 @@ async function save(value: ServerFormValue) {
           <b>{{ server.current_version ?? '—' }}</b>
           <span>modpack estável</span>
         </div>
+        <div>
+          <b>★ {{ (server.stars ?? 0).toLocaleString('pt-BR') }}</b>
+          <span>{{ server.stars === 1 ? 'estrela' : 'estrelas' }}</span>
+        </div>
       </div>
     </header>
 
@@ -160,6 +170,7 @@ async function save(value: ServerFormValue) {
     <VersionsTab v-else-if="tab === 'modpack'" :server="server" @changed="load" />
     <WhitelistTab v-else-if="tab === 'whitelist'" :server="server" />
     <PostsTab v-else-if="tab === 'novidades'" :server="server" />
+    <CommentsTab v-else-if="tab === 'comentarios'" :server="server" @stars="setStars" />
     <TeamTab v-else-if="tab === 'equipe'" :server="server" :role="role" />
     <CompanionTab v-else-if="tab === 'servidor'" :server="server" :role="role" />
     <HistoryTab v-else-if="tab === 'historico'" :server="server" />

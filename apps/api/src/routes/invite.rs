@@ -5,7 +5,7 @@
 //! ou baixa o launcher se ainda não tiver.
 
 use axum::extract::{Path, Query, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 
 use crate::state::AppState;
@@ -40,6 +40,7 @@ pub async fn page(State(state): State<AppState>, Path(slug): Path<String>) -> Re
         return (StatusCode::NOT_FOUND, Html(shell("Servidor não encontrado", "", &not_found()))).into_response();
     };
     let base = &state.config.public_url;
+    let site = &state.config.site_url;
     let summary: String = description.lines().next().unwrap_or_default().chars().take(180).collect();
     let status = if online { format!("{players}/{max} jogando agora") } else { "Offline no momento".into() };
     let og_image = safe_url(banner.clone()).or_else(|| safe_url(icon.clone())).unwrap_or_default();
@@ -80,7 +81,7 @@ pub async fn page(State(state): State<AppState>, Path(slug): Path<String>) -> Re
       <a class="btn primary" id="open" href="conexao://servidor/{slug}">Abrir no Conexão</a>
       {discord_html}
     </div>
-    <p class="hint" id="hint">Ainda não tem o Conexão? <a href="{base}/baixar">Baixe o launcher</a> — ele instala o modpack e entra no servidor com um clique.</p>
+    <p class="hint" id="hint">Ainda não tem o Conexão? <a href="{site}/baixar">Baixe o launcher</a> — ele instala o modpack e entra no servidor com um clique.</p>
   </div>
 </main>
 <script>
@@ -171,8 +172,14 @@ pub struct DownloadQuery {
 }
 
 /// Redireciona para o instalador: o visual, se publicado; senão (ou com `?classico`) o NSIS
-/// mais recente do `latest.json` publicado pelo CI.
-pub async fn download(State(state): State<AppState>, Query(query): Query<DownloadQuery>) -> Response {
+/// mais recente do `latest.json` publicado pelo CI. Com a lista de espera ligada, quem ainda
+/// não foi liberado volta para a lista no site.
+pub async fn download(State(state): State<AppState>, headers: HeaderMap, Query(query): Query<DownloadQuery>) -> Response {
+    match crate::routes::waitlist::download_allowed(&state, &headers).await {
+        Ok(true) => {}
+        Ok(false) => return Redirect::temporary(&crate::routes::waitlist::waitlist_url(&state)).into_response(),
+        Err(error) => return error.into_response(),
+    }
     if let Some(url) = &state.config.download_url {
         return Redirect::temporary(url).into_response();
     }

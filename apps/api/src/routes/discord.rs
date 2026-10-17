@@ -22,12 +22,13 @@ use uuid::Uuid;
 use crate::agents::sha256_hex;
 use crate::auth::{ACCOUNT_OFFLINE, USER_COLUMNS, User, audit, issue_token, minecraft_name_exists};
 use crate::error::{ApiError, ApiResult};
+use crate::routes::waitlist;
 use crate::state::AppState;
 
 /// Validade do cadastro em andamento (entre o login no Discord e a escolha do nick).
 const SIGNUP_MINUTES: i64 = 15;
 
-fn discord_app(state: &AppState) -> ApiResult<(&str, &str)> {
+pub(crate) fn discord_app(state: &AppState) -> ApiResult<(&str, &str)> {
     match (&state.config.discord_client_id, &state.config.discord_client_secret) {
         (Some(id), Some(secret)) => Ok((id, secret)),
         _ => Err(ApiError::bad("O login pelo Discord ainda não está disponível.")),
@@ -90,14 +91,23 @@ struct DiscordToken {
 }
 
 #[derive(Deserialize)]
-struct DiscordUser {
-    id: String,
-    username: String,
+pub(crate) struct DiscordUser {
+    pub id: String,
+    pub username: String,
     #[serde(default)]
-    global_name: Option<String>,
+    pub global_name: Option<String>,
+    /// Hash do avatar (`cdn.discordapp.com/avatars/<id>/<hash>.png`).
+    #[serde(default)]
+    pub avatar: Option<String>,
 }
 
 async fn discord_user(state: &AppState, code: &str) -> ApiResult<DiscordUser> {
+    discord_user_with(state, code, &state.config.discord_redirect_uri).await
+}
+
+/// Troca o `code` pelo usuário do Discord. `redirect_uri` precisa ser o mesmo usado na autorização
+/// (o do launcher ou o do site, na lista de espera).
+pub(crate) async fn discord_user_with(state: &AppState, code: &str, redirect_uri: &str) -> ApiResult<DiscordUser> {
     let (client_id, client_secret) = discord_app(state)?;
     let response = state
         .http
@@ -105,7 +115,7 @@ async fn discord_user(state: &AppState, code: &str) -> ApiResult<DiscordUser> {
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", code),
-            ("redirect_uri", state.config.discord_redirect_uri.as_str()),
+            ("redirect_uri", redirect_uri),
             ("client_id", client_id),
             ("client_secret", client_secret),
         ])
@@ -186,10 +196,13 @@ pub async fn login(
                 "Este Discord está ligado a uma conta original. Entre com a conta Microsoft.",
             ));
         }
+        waitlist::require_launcher_access(&state, Some(&user), None, Some(&discord.id)).await?;
         let session = new_session(&state, &user).await?;
         let token = issue_token(&state, &user)?;
         return Ok(Json(DiscordLoginResponse::Ok(OfflineLogin { token, session, user })));
     }
+    // Sem conta ainda: só segue para a escolha do nick quem foi liberado na lista.
+    waitlist::require_launcher_access(&state, None, None, Some(&discord.id)).await?;
     let claims = SignupClaims {
         discord_id: discord.id.clone(),
         discord_name: discord.global_name.clone().unwrap_or_else(|| discord.username.clone()),
@@ -246,6 +259,7 @@ pub async fn register(
     .map_err(|_| ApiError::bad("O cadastro expirou. Entre com o Discord de novo."))?
     .claims;
     let nick = input.nick.trim();
+    waitlist::require_launcher_access(&state, None, None, Some(&claims.discord_id)).await?;
     check_nick(&state, nick).await?;
     let user = sqlx::query_as::<_, User>(&format!(
         "INSERT INTO users (id, minecraft_uuid, minecraft_name, discord_id, account_type)
@@ -263,6 +277,7 @@ pub async fn register(
         other => other,
     })?;
     audit(&state.pool, None, Some(user.id), "account.offline_created", serde_json::json!({ "nick": nick })).await?;
+    let user = waitlist::grant(&state, user).await?;
     let session = new_session(&state, &user).await?;
     let token = issue_token(&state, &user)?;
     Ok(Json(OfflineLogin { token, session, user }))
@@ -295,6 +310,11 @@ pub async fn session(
         .bind(user_id)
         .fetch_one(&state.pool)
         .await?;
+    let discord_id: Option<String> = sqlx::query_scalar("SELECT discord_id FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&state.pool)
+        .await?;
+    waitlist::require_launcher_access(&state, Some(&user), None, discord_id.as_deref()).await?;
     let token = issue_token(&state, &user)?;
     Ok(Json(SessionLogin { token, user }))
 }
@@ -313,7 +333,7 @@ mod tests {
     use super::*;
 
     fn user(username: &str, global: Option<&str>) -> DiscordUser {
-        DiscordUser { id: "1".into(), username: username.into(), global_name: global.map(str::to_string) }
+        DiscordUser { id: "1".into(), username: username.into(), global_name: global.map(str::to_string), avatar: None }
     }
 
     #[test]

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Conexão — o launcher do Minecraft Roleplay</title>
-<meta name="description" content="Os servidores de Minecraft Roleplay num só lugar. Baixe o Conexão, entre com a conta Microsoft e jogue com um clique: Java, loader e modpack instalados sozinhos.">
+<title>Conexão — lista de espera do launcher de Minecraft Roleplay</title>
+<meta name="description" content="O Conexão está em acesso antecipado. Entre na lista de espera com o seu Discord, acompanhe as liberações na comunidade e jogue os servidores de Minecraft Roleplay com um clique.">
 <meta name="theme-color" content="#0a0f11">
 <link rel="canonical" href="https://conexaosmps.com.br/">
 <link rel="icon" type="image/png" href="/assets/favicon.png">
@@ -12,8 +12,8 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Conexão">
 <meta property="og:locale" content="pt_BR">
-<meta property="og:title" content="Conexão — o launcher do Minecraft Roleplay">
-<meta property="og:description" content="Os servidores de Minecraft Roleplay num só lugar. Escolha o servidor e clique em Jogar: o Conexão instala tudo sozinho.">
+<meta property="og:title" content="Conexão — entre na lista de espera">
+<meta property="og:description" content="O launcher dos servidores de Minecraft Roleplay está em acesso antecipado. Garanta o seu lugar na fila e entre na comunidade no Discord.">
 <meta property="og:url" content="https://conexaosmps.com.br/">
 <meta property="og:image" content="https://conexaosmps.com.br/assets/og.jpg">
 <meta property="og:image:width" content="1200">
@@ -28,6 +28,14 @@
 <body>
 <a class="skip" href="#conteudo">Pular para o conteúdo</a>
 
+<div class="faixa">
+  <div class="wrap faixa-in">
+    <span class="faixa-ponto" aria-hidden="true"></span>
+    <span>As liberações da lista saem primeiro no nosso Discord.</span>
+    <a href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>discord.gg/conexaosmps</a>
+  </div>
+</div>
+
 <header class="topo">
   <div class="wrap topo-in">
     <a class="marca" href="/" aria-label="Conexão — início">
@@ -35,33 +43,128 @@
       <img class="marca-nome" src="/assets/wordmark.webp" alt="Conexão" width="92" height="35">
     </a>
     <nav class="menu" aria-label="Principal">
+      <a href="#lista">Lista de espera</a>
+      <a href="#comunidade">Comunidade</a>
       <a href="#como-funciona">Como funciona</a>
-      <a href="#recursos">Recursos</a>
-      <a href="#servidores">Para servidores</a>
       <a href="#duvidas">Dúvidas</a>
     </nav>
-    <a class="btn btn-lime btn-sm" href="/baixar" data-baixar>Baixar</a>
+    <div class="topo-acoes">
+      <a class="btn btn-discord btn-sm" href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg>
+        <span class="so-largo">Discord</span>
+      </a>
+      <a class="btn btn-lime btn-sm" href="#lista" id="topo-cta">Entrar na lista</a>
+    </div>
   </div>
 </header>
 
 <main id="conteudo">
-  <!-- Hero -->
+  <!-- Hero + lista de espera -->
   <section class="hero">
     <div class="wrap hero-in">
       <div class="hero-texto">
-        <p class="rotulo"><span class="pix" aria-hidden="true"></span>Launcher de Minecraft Roleplay</p>
-        <h1>Os servidores de <em>Roleplay</em> num só lugar.</h1>
-        <p class="lead">Entre com a sua conta Microsoft, escolha o servidor e clique em <strong>Jogar</strong>. O Conexão instala o Java, o loader e o modpack certo e já abre o jogo conectado.</p>
-        <div class="cta">
-          <a class="btn btn-lime btn-lg" href="/baixar" data-baixar>
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M3 5.1 10.4 4v7.1H3V5.1Zm0 13.8 7.4 1.1v-7H3v5.9Zm8.3 1.2L21 21.5v-8.4h-9.7v7Zm0-16.2v7.2H21V2.5l-9.7 1.4Z"/></svg>
-            Baixar para Windows
-          </a>
-          <a class="btn btn-ghost btn-lg" href="#como-funciona">Como funciona</a>
+        <p class="rotulo"><span class="pix" aria-hidden="true"></span>Acesso antecipado</p>
+        <h1>O launcher do <em>Roleplay</em> está chegando.</h1>
+        <p class="lead">Estamos liberando o Conexão aos poucos. Entre na lista de espera com o seu Discord e garanta o seu lugar: quando chegar a sua vez, o botão de instalar aparece aqui mesmo.</p>
+
+        <div class="lista" id="lista" aria-live="polite">
+          <span class="canto c1" aria-hidden="true"></span><span class="canto c2" aria-hidden="true"></span>
+          <span class="canto c3" aria-hidden="true"></span><span class="canto c4" aria-hidden="true"></span>
+
+          <p class="lista-erro" id="lista-erro" role="alert" hidden></p>
+
+          <!-- Carregando / sem JavaScript -->
+          <div class="estado" data-estado="carregando">
+            <p class="lista-titulo">Lista de espera</p>
+            <p class="lista-texto">Carregando a sua vaga…</p>
+            <noscript><p class="lista-texto">Ative o JavaScript para entrar na lista.</p></noscript>
+          </div>
+
+          <!-- Sem login -->
+          <div class="estado" data-estado="entrar" hidden>
+            <p class="lista-titulo">Garanta o seu lugar na fila</p>
+            <p class="lista-texto"><strong class="contador" data-fila>Muita gente</strong> já está esperando. Leva 10 segundos.</p>
+            <a class="btn btn-discord btn-lg btn-largo" href="/v1/waitlist/discord">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg>
+              Entrar na lista com o Discord
+            </a>
+            <p class="lista-nota">Usamos só o seu nome e o avatar do Discord. Nada é postado em seu nome.</p>
+          </div>
+
+          <!-- Logado, ainda sem pedido (ou editando o nick) -->
+          <form class="estado" data-estado="pedido" id="form-pedido" hidden novalidate>
+            <div class="quem">
+              <img class="avatar" data-avatar src="/assets/marca.webp" alt="" width="40" height="40">
+              <div>
+                <p class="quem-nome" data-nome></p>
+                <button type="button" class="link-sair" data-sair>Não é você? Sair</button>
+              </div>
+            </div>
+            <fieldset class="tipo">
+              <legend>Qual conta você vai usar?</legend>
+              <label class="opcao">
+                <input type="radio" name="original" value="1" checked>
+                <span><strong>Minecraft original</strong><small>Conta Microsoft com o Java Edition</small></span>
+              </label>
+              <label class="opcao">
+                <input type="radio" name="original" value="0">
+                <span><strong>Não original</strong><small>Entra pelo Discord, nos servidores que aceitam</small></span>
+              </label>
+            </fieldset>
+            <label class="campo">
+              <span>Seu nick no Minecraft</span>
+              <input type="text" name="nick" id="nick" required minlength="3" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Steve_RP">
+            </label>
+            <button type="submit" class="btn btn-lime btn-lg btn-largo" id="enviar-pedido">Garantir meu lugar</button>
+          </form>
+
+          <!-- Na fila -->
+          <div class="estado" data-estado="fila" hidden>
+            <div class="quem">
+              <img class="avatar" data-avatar src="/assets/marca.webp" alt="" width="40" height="40">
+              <div>
+                <p class="quem-nome" data-nome></p>
+                <p class="quem-nick">Nick: <strong data-nick></strong> · <button type="button" class="link-sair" data-editar>trocar</button></p>
+              </div>
+            </div>
+            <div class="posicao">
+              <span class="posicao-num" data-posicao>#–</span>
+              <span class="posicao-texto">Você está na fila. <strong>Não perca a sua vez:</strong> avisamos cada leva de liberação no Discord.</span>
+            </div>
+            <a class="btn btn-discord btn-lg btn-largo" href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>Entrar no Discord da Conexão</a>
+            <button type="button" class="link-sair centro" data-sair>Sair</button>
+          </div>
+
+          <!-- Liberado / equipe -->
+          <div class="estado" data-estado="liberado" hidden>
+            <div class="quem">
+              <img class="avatar" data-avatar src="/assets/marca.webp" alt="" width="40" height="40">
+              <div>
+                <p class="quem-nome"><span data-nome></span> <span class="selo" data-selo hidden>Equipe Conexão</span></p>
+                <button type="button" class="link-sair" data-sair>Sair</button>
+              </div>
+            </div>
+            <p class="lista-titulo verde" data-liberado-titulo>Você foi liberado!</p>
+            <p class="lista-texto">Baixe o instalador, entre com a conta que você cadastrou e escolha o seu servidor.</p>
+            <a class="btn btn-lime btn-lg btn-largo" href="/baixar" data-baixar>
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M3 5.1 10.4 4v7.1H3V5.1Zm0 13.8 7.4 1.1v-7H3v5.9Zm8.3 1.2L21 21.5v-8.4h-9.7v7Zm0-16.2v7.2H21V2.5l-9.7 1.4Z"/></svg>
+              Baixar para Windows
+            </a>
+            <p class="meta" id="meta-download">Grátis · Windows 10 e 11 (64 bits)</p>
+            <p class="aviso-so" id="aviso-so" hidden>Por enquanto o Conexão é só para Windows. Abra esta página no seu PC para baixar.</p>
+            <a class="link-painel" href="https://painel.conexaosmps.com.br/#/equipe-conexao/lista-de-espera" data-painel hidden>Abrir a lista de espera no painel →</a>
+          </div>
+
+          <!-- Recusado -->
+          <div class="estado" data-estado="recusado" hidden>
+            <p class="lista-titulo">Seu pedido não foi aprovado desta vez</p>
+            <p class="lista-texto">Fale com a equipe no Discord para saber mais. Por lá também saem as próximas oportunidades.</p>
+            <a class="btn btn-discord btn-lg btn-largo" href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>Falar com a equipe no Discord</a>
+            <button type="button" class="link-sair centro" data-sair>Sair</button>
+          </div>
         </div>
-        <p class="meta" id="meta-download">Grátis · Windows 10 e 11 (64 bits)</p>
-        <p class="aviso-so" id="aviso-so" hidden>Por enquanto o Conexão é só para Windows. Abra esta página no seu PC para baixar.</p>
       </div>
+
       <div class="hero-arte">
         <figure class="janela">
           <span class="canto c1" aria-hidden="true"></span><span class="canto c2" aria-hidden="true"></span>
@@ -72,26 +175,60 @@
     </div>
   </section>
 
+  <!-- Comunidade no Discord -->
+  <section class="comunidade" id="comunidade">
+    <div class="wrap">
+      <div class="comunidade-in">
+        <div class="comunidade-texto">
+          <p class="rotulo"><span class="pix" aria-hidden="true"></span>Comunidade</p>
+          <h2>A Conexão começa no Discord</h2>
+          <p class="comunidade-lead">É lá que a gente anuncia cada leva de liberação, apresenta os servidores parceiros e onde jogadores e criadores de conteúdo se encontram.</p>
+          <ul class="checks">
+            <li>Seja avisado primeiro quando a sua vez na lista chegar</li>
+            <li>Encontre SMPs de Roleplay de qualidade para jogar</li>
+            <li>Conheça criadores de conteúdo e forme o seu grupo</li>
+            <li>Tire dúvidas e fale direto com a equipe</li>
+          </ul>
+          <a class="btn btn-discord btn-lg" href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm4 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg>
+            Entrar no Discord
+          </a>
+        </div>
+        <a class="convite" href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord aria-label="Convite do Discord da Conexão: discord.gg/conexaosmps">
+          <img src="/assets/marca.webp" alt="" width="72" height="72">
+          <span class="convite-rotulo">Servidor oficial no Discord</span>
+          <span class="convite-nome">Comunidade Conexão</span>
+          <span class="convite-numeros" data-comunidade hidden>
+            <span><i class="bolinha online" aria-hidden="true"></i><b data-online>0</b> online</span>
+            <span><i class="bolinha" aria-hidden="true"></i><b data-membros>0</b> membros</span>
+          </span>
+          <span class="convite-link">discord.gg/conexaosmps</span>
+          <span class="convite-btn">Entrar na comunidade</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
   <!-- Como funciona -->
   <section class="secao" id="como-funciona">
     <div class="wrap">
       <p class="rotulo"><span class="pix" aria-hidden="true"></span>Como funciona</p>
-      <h2>Do download ao servidor em três passos</h2>
+      <h2>Da fila ao servidor em três passos</h2>
       <ol class="passos">
         <li>
           <span class="num">1</span>
-          <h3>Baixe e instale</h3>
-          <p>O instalador baixa a versão mais nova, confere a assinatura e instala sem pedir permissão de administrador. Depois o launcher se atualiza sozinho.</p>
+          <h3>Entre na lista</h3>
+          <p>Faça login com o Discord aqui no site e informe o seu nick. A sua posição na fila aparece na hora.</p>
         </li>
         <li>
           <span class="num">2</span>
-          <h3>Entre com a Microsoft</h3>
-          <p>Use a mesma conta que tem o Minecraft: Java Edition. O login é feito na página oficial da Microsoft.</p>
+          <h3>Acompanhe no Discord</h3>
+          <p>Liberamos o Conexão em levas e avisamos cada uma no <a href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>nosso Discord</a>.</p>
         </li>
         <li>
           <span class="num">3</span>
-          <h3>Escolha e jogue</h3>
-          <p>Clique em <strong>Jogar</strong> no servidor. O Conexão baixa o que falta e abre o Minecraft já entrando no IP.</p>
+          <h3>Baixe e jogue</h3>
+          <p>Liberado, o botão de instalar aparece nesta página. Clique em <strong>Jogar</strong> no servidor e o Conexão instala tudo sozinho.</p>
         </li>
       </ol>
     </div>
@@ -100,7 +237,7 @@
   <!-- Recursos -->
   <section class="secao" id="recursos">
     <div class="wrap">
-      <p class="rotulo"><span class="pix" aria-hidden="true"></span>Recursos</p>
+      <p class="rotulo"><span class="pix" aria-hidden="true"></span>O que vem aí</p>
       <h2>Feito para quem joga Roleplay</h2>
       <div class="grade">
         <article class="card">
@@ -144,13 +281,16 @@
         <div class="parceiro-texto">
           <p class="rotulo"><span class="pix" aria-hidden="true"></span>Para servidores</p>
           <h2>Tem um servidor de Roleplay?</h2>
-          <p>Cadastre o seu servidor no painel. Depois da aprovação da equipe Conexão, ele aparece na lista do launcher para todo mundo. É gratuito para parceiros.</p>
+          <p>Os servidores parceiros entram antes da fila: a sua equipe já usa o Conexão para montar o modpack. Chame a gente no Discord para cadastrar o seu.</p>
           <ul class="checks">
             <li>Publique versões do modpack e volte para uma anterior quando quiser</li>
             <li>Whitelist aplicada no servidor em tempo real pelo agente do Conexão</li>
             <li>Link de convite com banner para divulgar no Discord</li>
           </ul>
-          <a class="btn btn-lime" href="https://painel.conexaosmps.com.br">Abrir o painel</a>
+          <div class="cta">
+            <a class="btn btn-lime" href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>Quero ser parceiro</a>
+            <a class="btn btn-ghost" href="https://painel.conexaosmps.com.br">Abrir o painel</a>
+          </div>
         </div>
         <figure class="janela janela-menor">
           <span class="canto c1" aria-hidden="true"></span><span class="canto c2" aria-hidden="true"></span>
@@ -168,8 +308,24 @@
       <h2>Perguntas frequentes</h2>
       <div class="faq">
         <details>
+          <summary>Como funciona a lista de espera?</summary>
+          <p>Você entra com o Discord, informa o nick e ganha uma posição na fila. A equipe libera o Conexão em levas, por ordem de chegada; quando chegar a sua vez, o botão de instalar aparece nesta página e o launcher aceita a sua conta.</p>
+        </details>
+        <details>
+          <summary>Quanto tempo demora para ser liberado?</summary>
+          <p>Depende do tamanho de cada leva. Anunciamos todas no <a href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>Discord da Conexão</a>: é o melhor lugar para acompanhar.</p>
+        </details>
+        <details>
+          <summary>Preciso estar no Discord da Conexão?</summary>
+          <p>Para entrar na lista, só precisa de uma conta no Discord. Estar no servidor não é obrigatório, mas é por lá que saem os avisos de liberação, os servidores parceiros e o suporte.</p>
+        </details>
+        <details>
           <summary>Preciso ter o Minecraft original?</summary>
-          <p>Sim. O Conexão usa a sua conta Microsoft com o <strong>Minecraft: Java Edition</strong> comprado. Ele não vende nem libera o jogo.</p>
+          <p>É o recomendado: com a conta Microsoft que tem o <strong>Minecraft: Java Edition</strong> você entra em todos os servidores. Sem ela, dá para entrar pelo Discord nos servidores que aceitam contas não originais. O Conexão não vende nem libera o jogo.</p>
+        </details>
+        <details>
+          <summary>Cadastrei o nick errado. E agora?</summary>
+          <p>Enquanto estiver na fila, clique em <strong>trocar</strong> ao lado do nick. Você continua na mesma posição.</p>
         </details>
         <details>
           <summary>O Windows mostrou “O Windows protegeu o computador”. E agora?</summary>
@@ -177,7 +333,7 @@
         </details>
         <details>
           <summary>O instalador não abre ou dá erro. Tem outro jeito?</summary>
-          <p>Tem. Baixe o <a href="/baixar?classico=1">instalador clássico</a>: é o mesmo Conexão, com a janela de instalação padrão do Windows.</p>
+          <p>Tem. Depois de liberado, baixe o <a href="/baixar?classico=1">instalador clássico</a>: é o mesmo Conexão, com a janela de instalação padrão do Windows.</p>
         </details>
         <details>
           <summary>Funciona no Mac ou no Linux?</summary>
@@ -185,15 +341,7 @@
         </details>
         <details>
           <summary>O Conexão vê a minha senha?</summary>
-          <p>Não. O login acontece na página da própria Microsoft; o launcher recebe só a autorização para abrir o jogo com a sua conta.</p>
-        </details>
-        <details>
-          <summary>Quanto espaço ocupa?</summary>
-          <p>O launcher é pequeno. O espaço maior fica com o Minecraft e o modpack de cada servidor, que variam de servidor para servidor.</p>
-        </details>
-        <details>
-          <summary>Como desinstalo?</summary>
-          <p>Em <strong>Configurações → Aplicativos</strong> do Windows, procure por Conexao e clique em Desinstalar.</p>
+          <p>Não. O login acontece na página da própria Microsoft (ou do Discord); o launcher recebe só a autorização para abrir o jogo com a sua conta.</p>
         </details>
       </div>
     </div>
@@ -202,9 +350,12 @@
   <!-- Chamada final -->
   <section class="final">
     <div class="wrap final-in">
-      <h2>Junte-se agora</h2>
-      <p>Baixe o Conexão e entre no seu próximo personagem.</p>
-      <a class="btn btn-lime btn-lg" href="/baixar" data-baixar>Baixar para Windows</a>
+      <h2>Seu lugar na Conexão</h2>
+      <p>Entre na fila agora e acompanhe as liberações com a comunidade.</p>
+      <div class="cta cta-centro">
+        <a class="btn btn-lime btn-lg" href="#lista">Entrar na lista de espera</a>
+        <a class="btn btn-discord btn-lg" href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>Entrar no Discord</a>
+      </div>
     </div>
   </section>
 </main>
@@ -216,7 +367,8 @@
       <span>Conexão</span>
     </div>
     <nav aria-label="Rodapé">
-      <a href="/baixar" data-baixar>Baixar</a>
+      <a href="#lista">Lista de espera</a>
+      <a href="https://discord.gg/conexaosmps" target="_blank" rel="noopener" data-discord>Discord</a>
       <a href="https://painel.conexaosmps.com.br">Painel dos servidores</a>
       <a href="#duvidas">Dúvidas</a>
     </nav>

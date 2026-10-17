@@ -6,7 +6,9 @@ import Icon from '../components/Icon.vue'
 import PingBars from '../components/PingBars.vue'
 import PlayButton from '../components/PlayButton.vue'
 import ServerIcon from '../components/ServerIcon.vue'
+import ServerComments from '../components/ServerComments.vue'
 import ServerNews from '../components/ServerNews.vue'
+import StarButton from '../components/StarButton.vue'
 import { isFull, slots, toggleSlotWatch } from '../lib/slots'
 import { api, errorMessage, LOADER_NAMES, type InstallState, type ServerSummary } from '../lib/api'
 import { bgImage, formatBytes, formatNumber } from '../lib/format'
@@ -79,7 +81,10 @@ async function copyAddress() {
             <PingBars :ms="server.status.latency_ms" :online="server.status.online" />
           </div>
         </div>
-        <FavoriteButton :slug="server.slug" light class="fav" />
+        <div class="hero-actions">
+          <StarButton :slug="server.slug" :count="server.stars" light big />
+          <FavoriteButton :slug="server.slug" light class="fav" />
+        </div>
       </div>
     </header>
 
@@ -122,6 +127,8 @@ async function copyAddress() {
             </li>
           </ol>
         </section>
+
+        <ServerComments :server="server" />
       </div>
 
       <aside class="side">
@@ -243,6 +250,17 @@ async function copyAddress() {
   gap: 20px;
   padding: 24px 28px;
   color: #fff;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hero-actions .fav {
+  width: 40px;
+  height: 40px;
 }
 
 .icon {

@@ -36,13 +36,15 @@ pub struct ServerRow {
     current_version: Option<String>,
     pack_size: Option<i64>,
     allow_offline: bool,
+    stars: i64,
 }
 
 const SELECT: &str = "SELECT s.id, s.slug, s.name, s.description, s.address, s.minecraft_version, s.loader,
         s.loader_version, s.tags, s.icon_url, s.banner_url, s.discord_url, s.whitelist_required, s.approval,
         s.featured_until, s.status_online, s.status_players, s.status_max_players, s.status_latency_ms,
         s.status_checked_at, s.allow_offline, pv.version AS current_version,
-        (SELECT SUM((f->>'size')::BIGINT)::BIGINT FROM jsonb_array_elements(pv.manifest->'files') f) AS pack_size
+        (SELECT SUM((f->>'size')::BIGINT)::BIGINT FROM jsonb_array_elements(pv.manifest->'files') f) AS pack_size,
+        (SELECT COUNT(*) FROM server_stars st WHERE st.server_id = s.id) AS stars
    FROM servers s
    LEFT JOIN server_channels sc ON sc.server_id = s.id AND sc.channel = 'stable'
    LEFT JOIN pack_versions pv ON pv.id = sc.version_id";
@@ -104,6 +106,7 @@ impl ServerRow {
                 current_version: self.current_version,
                 pack_size: self.pack_size.and_then(|v| u64::try_from(v).ok()),
                 allow_offline: self.allow_offline,
+                stars: u32::try_from(self.stars).unwrap_or(0),
             },
         }
     }

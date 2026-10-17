@@ -35,6 +35,8 @@ function describe(e: AuditEntry): string {
       return `${WHITELIST[String(d.status)] ?? d.status} ${d.player}`
     case 'member.set':
       return d.role === 'none' ? `removeu ${d.member} da equipe` : `definiu ${d.member} como ${d.role}`
+    case 'comment.deleted':
+      return `apagou um comentário de ${d.author}: "${d.excerpt}${String(d.excerpt ?? '').length >= 120 ? '…' : ''}"`
     case 'agent.token_rotated':
       return 'gerou um novo token do agente'
     case 'agent.command_result':

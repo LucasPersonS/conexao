@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ServerSummary } from '../lib/api'
 import { bgImage, formatNumber } from '../lib/format'
 import FavoriteButton from './FavoriteButton.vue'
+import StarButton from './StarButton.vue'
 import Icon from './Icon.vue'
 import PingBars from './PingBars.vue'
 import ServerIcon from './ServerIcon.vue'
@@ -63,6 +64,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
               <button class="btn btn-primary connect" @click="emit('open', current.slug)">
                 <Icon name="play" :size="14" /> Conectar
               </button>
+              <StarButton :slug="current.slug" :count="current.stars" light />
               <FavoriteButton :slug="current.slug" light />
             </div>
           </div>
@@ -202,6 +204,7 @@ h2 {
 
 .actions {
   display: flex;
+  align-items: center;
   gap: 10px;
   margin-top: 6px;
 }
