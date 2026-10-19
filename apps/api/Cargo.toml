@@ -6,6 +6,8 @@ license.workspace = true
 description = "API central do Conexão: servidores parceiros, versões de modpack, whitelist e agentes"
 
 [dependencies]
+aes-gcm = { workspace = true }
+base64 = { workspace = true }
 async-minecraft-ping = { workspace = true, features = ["srv"] }
 axum = { workspace = true }
 bytes = { workspace = true }

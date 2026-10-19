@@ -12,7 +12,9 @@ pub mod plan;
 pub mod posts;
 pub mod profiles;
 pub mod servers;
+pub mod shop;
 pub mod storage_admin;
+pub mod support;
 pub mod versions;
 pub mod waitlist;
 pub mod whitelist;
@@ -122,6 +124,23 @@ pub fn router(state: AppState) -> Router {
         .route("/servers/{slug}/featured/purchases", get(featured::purchases))
         .route("/servers/{slug}/featured/purchases/{id}", get(featured::purchase))
         .route("/payments/mercadopago/webhook", post(featured::webhook))
+        // Monetização: Moedas, Conexão+, PRO e apoio a servidores
+        .route("/shop/catalog", get(shop::catalog))
+        .route("/shop/checkout", post(shop::checkout))
+        .route("/shop/spend", post(shop::spend))
+        .route("/me/wallet", get(shop::wallet))
+        .route("/me/orders", get(shop::my_orders))
+        .route("/me/orders/{id}", get(shop::my_order))
+        .route("/servers/{slug}/supporters", get(support::supporters))
+        .route("/servers/{slug}/support", get(support::admin_view))
+        .route("/servers/{slug}/support/checkout", post(support::checkout))
+        .route("/servers/{slug}/payout", put(support::settings).delete(support::disconnect))
+        .route("/servers/{slug}/payout/connect", post(support::connect))
+        .route("/servers/{slug}/stats", get(support::stats))
+        .route("/payments/mercadopago/oauth/callback", get(support::oauth_callback))
+        .route("/payments/mercadopago/webhook/apoio/{order_id}", post(support::webhook))
+        .route("/staff/coins", post(shop::staff_grant))
+        .route("/staff/orders", get(shop::staff_orders))
         .route("/files/missing", post(files::missing))
         .route("/files/resolve", post(files::resolve))
         // Corpo gravado em streaming; o limite por arquivo e a cota são conferidos no handler.
@@ -140,6 +159,7 @@ pub fn router(state: AppState) -> Router {
         .route("/convite/{slug}", get(invite::page))
         .route("/baixar", get(invite::download))
         .route("/u/{name}", get(profiles::page))
+        .route("/pagamento", get(shop::return_page))
         .nest("/v1", api)
         .nest_service("/files", ServeDir::new(storage::files_dir(&state.config.storage_dir)))
         .nest_service("/images", ServeDir::new(state.config.storage_dir.join("images")))

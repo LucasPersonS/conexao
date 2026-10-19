@@ -467,13 +467,21 @@ fn route_allowed(method: &str, path: &str) -> bool {
         (method, segments.as_slice()),
         (
             "GET",
-            ["me", "profile" | "stars"]
+            ["me", "profile" | "stars" | "wallet" | "orders"]
+                | ["me", "orders", _]
                 | ["profile", "catalog"]
+                | ["shop", "catalog"]
                 | ["profiles", _]
                 | ["events"]
-                | ["servers", _, "posts" | "comments"]
+                | ["servers", _, "posts" | "comments" | "supporters"]
         ) | ("PUT", ["me", "profile"] | ["servers", _, "star"])
-            | ("POST", ["profiles", _, "report"] | ["servers", _, "comments"])
+            | (
+                "POST",
+                ["profiles", _, "report"]
+                    | ["servers", _, "comments"]
+                    | ["shop", "checkout" | "spend"]
+                    | ["servers", _, "support", "checkout"]
+            )
             | ("DELETE", ["servers", _, "star"] | ["servers", _, "comments", _])
     )
 }
@@ -557,6 +565,18 @@ mod tests {
         assert!(!route_allowed("GET", "/v1/servers/paravexia/whitelist"));
         assert!(!route_allowed("GET", "/v1/servers/a/b/posts"));
         assert!(route_allowed("GET", "/v1/events"));
+        // loja e apoio
+        assert!(route_allowed("GET", "/v1/shop/catalog"));
+        assert!(route_allowed("GET", "/v1/me/wallet"));
+        assert!(route_allowed("GET", "/v1/me/orders/6f1c2b9e-1111-4222-8333-444455556666"));
+        assert!(route_allowed("POST", "/v1/shop/spend"));
+        assert!(route_allowed("POST", "/v1/servers/paravexia/support/checkout"));
+        assert!(route_allowed("GET", "/v1/servers/paravexia/supporters"));
+        assert!(!route_allowed("POST", "/v1/staff/coins"));
+        assert!(!route_allowed("GET", "/v1/staff/orders"));
+        assert!(!route_allowed("POST", "/v1/servers/paravexia/payout/connect"));
+        assert!(!route_allowed("GET", "/v1/servers/paravexia/support"));
+        assert!(!route_allowed("GET", "/v1/me/orders/../wallet"));
         assert!(route_allowed("PUT", "/v1/servers/paravexia/star"));
         assert!(route_allowed("DELETE", "/v1/servers/paravexia/star"));
         assert!(route_allowed("GET", "/v1/me/stars"));

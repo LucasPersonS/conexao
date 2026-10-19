@@ -84,6 +84,26 @@ pub struct Config {
     pub staff_discord_ids: Vec<String>,
     /// Convite da comunidade no Discord, mostrado para quem ainda não foi liberado.
     pub discord_invite: String,
+    // ---------------------------------------------------------------- monetização
+    /// Chave AES-256 (base64) que criptografa segredos guardados no banco, como os
+    /// tokens OAuth do Mercado Pago dos donos de servidor. Fica só na VPS.
+    pub secrets_key: Option<[u8; 32]>,
+    /// App do Mercado Pago (marketplace) usado para os donos conectarem a conta e receberem apoios.
+    pub mp_client_id: Option<String>,
+    pub mp_client_secret: Option<String>,
+    pub mp_auth_url: String,
+    pub mp_oauth_redirect_uri: String,
+    /// Pacotes de Moedas: (moedas, preço em centavos).
+    pub coin_packs: Vec<(i32, i32)>,
+    /// Conexão+ e PRO: (dias, preço em centavos). Em moedas, 1 moeda = 1 centavo.
+    pub plus_plans: Vec<(i32, i32)>,
+    pub pro_plans: Vec<(i32, i32)>,
+    /// Parte do Conexão em cada apoio, em pontos-base (1500 = 15%).
+    pub support_fee_bps: i32,
+    pub support_min_cents: i32,
+    pub support_max_cents: i32,
+    /// Cota de armazenamento dos servidores PRO.
+    pub pro_quota_bytes: u64,
 }
 
 /// Lê `CONEXAO_*`; se não existir, aceita o nome antigo (`CENTRAL_*`) para quem ainda não migrou.
@@ -117,6 +137,44 @@ pub fn parse_plans(value: &str) -> eyre::Result<Vec<(i32, i32)>> {
             Ok((days, cents))
         })
         .collect()
+}
+
+/// `"500:5.00,1050:10.00"` → [(500, 500), (1050, 1000)] (moedas, centavos).
+pub fn parse_packs(value: &str) -> eyre::Result<Vec<(i32, i32)>> {
+    value
+        .split(',')
+        .filter(|p| !p.trim().is_empty())
+        .map(|pack| {
+            let (coins, price) = pack.trim().split_once(':').ok_or_else(|| eyre!("pacote inválido: {pack}"))?;
+            let coins: i32 = coins.trim().parse().wrap_err_with(|| format!("moedas inválidas em {pack}"))?;
+            let price: f64 = price.trim().replace(',', ".").parse().wrap_err_with(|| format!("preço inválido em {pack}"))?;
+            let cents = (price * 100.0).round() as i32;
+            if !(1..=1_000_000).contains(&coins) || !(100..=100_000).contains(&cents) {
+                return Err(eyre!("pacote fora dos limites: {pack}"));
+            }
+            Ok((coins, cents))
+        })
+        .collect()
+}
+
+/// Valor em reais (`"5.00"`) → centavos, dentro de `[min, max]`.
+fn money(name: &str, default: &str, min: i32, max: i32) -> eyre::Result<i32> {
+    let raw = var(name).unwrap_or_else(|| default.into());
+    let value: f64 = raw.trim().replace(',', ".").parse().wrap_err_with(|| format!("{name} inválido"))?;
+    let cents = (value * 100.0).round() as i32;
+    if !(min..=max).contains(&cents) {
+        return Err(eyre!("{name} fora dos limites"));
+    }
+    Ok(cents)
+}
+
+/// Chave de 32 bytes em base64.
+pub fn parse_secrets_key(value: &str) -> eyre::Result<[u8; 32]> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(value.trim())
+        .map_err(|_| eyre!("CONEXAO_SECRETS_KEY inválida (use: conexao-api gerar-chave-segredos)"))?;
+    bytes.try_into().map_err(|_| eyre!("CONEXAO_SECRETS_KEY precisa ter 32 bytes (use: conexao-api gerar-chave-segredos)"))
 }
 
 fn percent(name: &str, default: f64) -> eyre::Result<f64> {
@@ -174,6 +232,18 @@ impl Config {
         if self.waitlist && !self.waitlist_redirect_uri.starts_with("https://") {
             missing.push("CONEXAO_SITE_DOMAIN (ou CONEXAO_SITE_URL / CONEXAO_WAITLIST_REDIRECT_URI) em https");
         }
+        if self.mp_client_id.is_some() != self.mp_client_secret.is_some() {
+            missing.push("CONEXAO_MP_CLIENT_ID e CONEXAO_MP_CLIENT_SECRET (as duas juntas)");
+        }
+        if self.mp_client_id.is_some() && self.secrets_key.is_none() {
+            missing.push("CONEXAO_SECRETS_KEY (obrigatória para guardar as contas Mercado Pago dos servidores)");
+        }
+        if self.mp_client_id.is_some() && self.mp_access_token.is_none() {
+            missing.push("CONEXAO_MP_ACCESS_TOKEN (o apoio usa o webhook e o app do Conexão)");
+        }
+        if !self.mp_auth_url.starts_with("https://") || !self.mp_oauth_redirect_uri.starts_with("https://") {
+            missing.push("CONEXAO_MP_AUTH_URL e CONEXAO_MP_OAUTH_REDIRECT_URI em https");
+        }
         if self.allow_private_ping {
             missing.push("CONEXAO_ALLOW_PRIVATE_PING desligado (só para testes locais)");
         }
@@ -203,7 +273,35 @@ impl Config {
             .to_string();
         let waitlist_redirect_uri = var("CONEXAO_WAITLIST_REDIRECT_URI")
             .unwrap_or_else(|| format!("{site_url}/v1/waitlist/discord/callback"));
+        let mp_oauth_redirect_uri = var("CONEXAO_MP_OAUTH_REDIRECT_URI")
+            .unwrap_or_else(|| format!("{public_url}/v1/payments/mercadopago/oauth/callback"));
+        let support_fee_bps: i32 = var("CONEXAO_SUPPORT_FEE_PERCENT")
+            .map(|v| v.trim().replace(',', ".").parse::<f64>())
+            .transpose()
+            .wrap_err("CONEXAO_SUPPORT_FEE_PERCENT inválido")?
+            .map_or(1500, |p| (p * 100.0).round() as i32);
+        if !(0..=5000).contains(&support_fee_bps) {
+            return Err(eyre!("CONEXAO_SUPPORT_FEE_PERCENT deve ficar entre 0 e 50"));
+        }
+        let support_min_cents = money("CONEXAO_SUPPORT_MIN", "5.00", 100, 100_000)?;
+        let support_max_cents = money("CONEXAO_SUPPORT_MAX", "500.00", 100, 1_000_000)?;
+        if support_min_cents > support_max_cents {
+            return Err(eyre!("CONEXAO_SUPPORT_MIN maior que CONEXAO_SUPPORT_MAX"));
+        }
         Ok(Self {
+            secrets_key: var("CONEXAO_SECRETS_KEY").map(|v| parse_secrets_key(&v)).transpose()?,
+            mp_client_id: var("CONEXAO_MP_CLIENT_ID"),
+            mp_client_secret: var("CONEXAO_MP_CLIENT_SECRET"),
+            mp_auth_url: var("CONEXAO_MP_AUTH_URL")
+                .unwrap_or_else(|| "https://auth.mercadopago.com.br/authorization".into()),
+            mp_oauth_redirect_uri,
+            coin_packs: parse_packs(&var("CONEXAO_COIN_PACKS").unwrap_or_else(|| "500:5.00,1050:10.00,2200:20.00,5750:50.00".into()))?,
+            plus_plans: parse_plans(&var("CONEXAO_PLUS_PLANS").unwrap_or_else(|| "30:9.90,90:26.90,365:89.90".into()))?,
+            pro_plans: parse_plans(&var("CONEXAO_PRO_PLANS").unwrap_or_else(|| "30:29.90,90:79.90,365:279.90".into()))?,
+            support_fee_bps,
+            support_min_cents,
+            support_max_cents,
+            pro_quota_bytes: megabytes("CONEXAO_PRO_QUOTA_MB", 2048)?,
             waitlist: var("CONEXAO_WAITLIST").is_some_and(|v| v == "1" || v == "true"),
             waitlist_redirect_uri,
             site_url,
@@ -311,7 +409,16 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-    use super::is_production_url;
+    use super::{is_production_url, parse_packs, parse_secrets_key};
+
+    #[test]
+    fn parses_coin_packs_and_key() {
+        assert_eq!(parse_packs("500:5.00, 1050:10.00").unwrap(), vec![(500, 500), (1050, 1000)]);
+        assert!(parse_packs("0:5").is_err());
+        assert!(parse_packs("500:0.10").is_err());
+        assert!(parse_secrets_key("AAAA").is_err());
+        assert!(parse_secrets_key("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").is_ok());
+    }
 
     #[test]
     fn production_is_public_https() {

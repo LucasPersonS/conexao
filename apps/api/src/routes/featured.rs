@@ -327,43 +327,35 @@ pub async fn webhook(
     StatusCode::OK
 }
 
-/// Consulta o pagamento no Mercado Pago e aplica/reverte o destaque.
+/// Consulta o pagamento no Mercado Pago e aplica o que ele pagou (destaque ou pedido).
 pub async fn process_payment(state: &AppState, payment_id: &str) -> ApiResult<()> {
-    let token = token(state)?;
-    let payment: serde_json::Value = state
-        .http
-        .get(format!("{}/v1/payments/{payment_id}", state.config.mp_api_url))
-        .bearer_auth(token)
-        .timeout(Duration::from_secs(15))
-        .send()
-        .await
-        .map_err(|e| ApiError::Internal(e.into()))?
-        .error_for_status()
-        .map_err(|e| ApiError::Internal(e.into()))?
-        .json()
-        .await
-        .map_err(|e| ApiError::Internal(e.into()))?;
+    crate::billing::process_platform_payment(state, payment_id).await
+}
+
+/// Aplica/reverte o destaque se o pagamento for de uma compra de destaque.
+/// Devolve `false` quando o pagamento não é de destaque (aí `billing` cuida).
+pub async fn apply_payment(state: &AppState, payment_id: &str, payment: &serde_json::Value) -> ApiResult<bool> {
     let Some(purchase_id) = payment["external_reference"].as_str().and_then(|r| Uuid::parse_str(r).ok()) else {
-        return Ok(()); // pagamento que não é do Conexão
+        return Ok(true); // pagamento que não é do Conexão
     };
     let status = payment["status"].as_str().unwrap_or_default();
     let amount = payment["transaction_amount"].as_f64().unwrap_or_default();
     let currency = payment["currency_id"].as_str().unwrap_or_default();
 
     let mut tx = state.pool.begin().await?;
-    let row: Option<(Uuid, i32, i32, String)> =
-        sqlx::query_as("SELECT server_id, days, amount_cents, status FROM featured_purchases WHERE id = $1 FOR UPDATE")
+    let row: Option<(Uuid, i32, i32, String, Option<String>)> =
+        sqlx::query_as("SELECT server_id, days, amount_cents, status, mp_payment_id FROM featured_purchases WHERE id = $1 FOR UPDATE")
             .bind(purchase_id)
             .fetch_optional(&mut *tx)
             .await?;
-    let Some((server_id, days, cents, current)) = row else { return Ok(()) };
+    let Some((server_id, days, cents, current, paid_with)) = row else { return Ok(false) };
     let paid_cents = (amount * 100.0).round() as i64;
 
     match status {
         "approved" if current == "pending" || current == "rejected" || current == "cancelled" => {
             if currency != "BRL" || paid_cents < i64::from(cents) {
                 tracing::error!(%purchase_id, amount, currency, "valor do pagamento não confere; destaque não aplicado");
-                return Ok(());
+                return Ok(true);
             }
             let until: DateTime<Utc> = sqlx::query_scalar(
                 "UPDATE servers SET featured_until = GREATEST(COALESCE(featured_until, now()), now()) + make_interval(days => $2)
@@ -395,7 +387,17 @@ pub async fn process_payment(state: &AppState, payment_id: &str) -> ApiResult<()
                 .await?;
             tx.commit().await?;
         }
-        "refunded" | "charged_back" if current == "approved" => {
+        // Estorno que chega antes da aprovação: fecha a compra para um "aprovado" atrasado não ligar o destaque.
+        "refunded" | "charged_back" if current == "pending" => {
+            sqlx::query("UPDATE featured_purchases SET status = 'refunded', mp_payment_id = $2 WHERE id = $1")
+                .bind(purchase_id)
+                .bind(payment_id)
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+        }
+        // Só o pagamento que ligou o destaque o desliga (um pagamento duplicado estornado não tira os dias).
+        "refunded" | "charged_back" if current == "approved" && paid_with.as_deref() == Some(payment_id) => {
             // Estorno: devolve os dias (o destaque nunca fica antes de agora).
             sqlx::query(
                 "UPDATE servers SET featured_until = GREATEST(now(), featured_until - make_interval(days => $2))
@@ -411,7 +413,7 @@ pub async fn process_payment(state: &AppState, payment_id: &str) -> ApiResult<()
         }
         _ => {} // pendente/em processo, ou aviso repetido: nada a fazer
     }
-    Ok(())
+    Ok(true)
 }
 
 #[cfg(test)]

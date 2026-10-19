@@ -32,6 +32,10 @@ export interface ServerSummary {
   allow_offline?: boolean
   /** Estrelas dadas pelos jogadores. */
   stars?: number
+  /** Plano PRO ativo. */
+  pro?: boolean
+  /** Aceita apoio dos jogadores (Mercado Pago conectado). */
+  supportable?: boolean
 }
 
 export type WhitelistStatus = 'pending' | 'approved' | 'rejected' | 'banned'
@@ -229,6 +233,95 @@ export const community = {
   comments: (slug: string) => json<CommentPage>('GET', `${serverPath(slug)}/comments`),
   comment: (slug: string, body: string) => json<ServerComment>('POST', `${serverPath(slug)}/comments`, { body }),
   deleteComment: (slug: string, id: string) => json<null>('DELETE', `${serverPath(slug)}/comments/${id}`),
+}
+
+// ------------------------------------------------------------------ loja e apoio
+
+export interface PlanOption {
+  sku: string
+  days: number
+  price_cents: number
+  /** Preço em Moedas (1 moeda = 1 centavo). */
+  coins: number
+}
+
+export interface CoinPack {
+  sku: string
+  coins: number
+  price_cents: number
+}
+
+export interface ShopCatalog {
+  money_enabled: boolean
+  support_enabled: boolean
+  coin_packs: CoinPack[]
+  plus: PlanOption[]
+  pro: PlanOption[]
+  featured: PlanOption[]
+  support: { min_cents: number; max_cents: number; fee_percent: number }
+}
+
+export interface LedgerEntry {
+  id: string
+  delta: number
+  balance_after: number
+  kind: 'purchase' | 'spend' | 'refund' | 'chargeback' | 'grant' | 'revoke'
+  description: string
+  created_at: string
+}
+
+export interface Wallet {
+  balance: number
+  premium_until: string | null
+  history: LedgerEntry[]
+}
+
+export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'refunded'
+
+export interface Order {
+  id: string
+  kind: 'coins' | 'plus' | 'pro' | 'featured' | 'support'
+  sku: string
+  pay_with: 'money' | 'coins'
+  amount_cents: number
+  coins: number
+  days: number | null
+  status: OrderStatus
+  server_slug: string | null
+  server_name: string | null
+  created_at: string
+  paid_at: string | null
+  granted_until: string | null
+}
+
+export interface Checkout {
+  order_id: string
+  checkout_url: string
+  fee_cents?: number
+}
+
+export interface SupportWall {
+  supporters_30d: number
+  recent: { supporter: string | null; supporter_uuid: string | null; message: string | null; paid_at: string | null }[]
+}
+
+export const shop = {
+  catalog: () => json<ShopCatalog>('GET', '/v1/shop/catalog'),
+  wallet: () => json<Wallet>('GET', '/v1/me/wallet'),
+  orders: () => json<Order[]>('GET', '/v1/me/orders'),
+  order: (id: string) => json<Order>('GET', `/v1/me/orders/${id}`),
+  /** Pagar com dinheiro: devolve o link do Mercado Pago. */
+  checkout: (sku: string, server?: string) => json<Checkout>('POST', '/v1/shop/checkout', { sku, server: server ?? null }),
+  /** Pagar com Moedas. `key` é único por clique (o servidor não cobra duas vezes). */
+  spend: (sku: string, key: string, server?: string) =>
+    json<{ order: Order; balance: number }>('POST', '/v1/shop/spend', { sku, key, server: server ?? null }),
+  supporters: (slug: string) => json<SupportWall>('GET', `${serverPath(slug)}/supporters`),
+  support: (slug: string, amountCents: number, message: string, anonymous: boolean) =>
+    json<Checkout>('POST', `${serverPath(slug)}/support/checkout`, {
+      amount_cents: amountCents,
+      message: message.trim() || null,
+      anonymous,
+    }),
 }
 
 export const posts = {

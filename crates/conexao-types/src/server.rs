@@ -60,6 +60,12 @@ pub struct ServerSummary {
     /// Estrelas dadas pelos jogadores no launcher.
     #[serde(default)]
     pub stars: u32,
+    /// Plano PRO ativo (selo no launcher).
+    #[serde(default)]
+    pub pro: bool,
+    /// Aceita apoio dos jogadores (conta Mercado Pago conectada e apoio ligado).
+    #[serde(default)]
+    pub supportable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -11,6 +11,7 @@ import logo from './assets/logo.png'
 import { api, errorMessage, type Account, type MyRoles } from './lib/api'
 import { prefs } from './lib/prefs'
 import { clearStars, loadStars } from './lib/stars'
+import { clearWallet, loadWallet } from './lib/wallet'
 import { listen } from '@tauri-apps/api/event'
 import { findServer, go, loadServers, openInvite, store } from './lib/store'
 import BrowseView from './views/BrowseView.vue'
@@ -18,6 +19,7 @@ import HomeView from './views/HomeView.vue'
 import ServerView from './views/ServerView.vue'
 import ProfileView from './views/ProfileView.vue'
 import SettingsView from './views/SettingsView.vue'
+import StoreView from './views/StoreView.vue'
 
 const ready = ref(false)
 const account = ref<Account | null>(null)
@@ -45,6 +47,7 @@ async function afterLogin() {
   }
   await loadServers()
   loadStars()
+  loadWallet()
   // Aberto por um convite (conexao://servidor/<slug>)?
   api.takeInvite().then((slug) => slug && openInvite(slug)).catch(() => {})
   api.myRoles().then((r) => (roles.value = r)).catch(() => (roles.value = null))
@@ -105,6 +108,7 @@ async function logout() {
   account.value = null
   roles.value = null
   clearStars()
+  clearWallet()
   go('home')
 }
 
@@ -168,6 +172,7 @@ onMounted(async () => {
           <ServerView v-else-if="store.view === 'server' && current" :server="current" />
           <SettingsView v-else-if="store.view === 'settings'" />
           <ProfileView v-else-if="store.view === 'profile'" />
+          <StoreView v-else-if="store.view === 'store'" />
           <div v-else class="missing">
             Este servidor não está mais na lista.
             <button class="btn" @click="go('browse')">Ver servidores</button>

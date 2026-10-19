@@ -12,6 +12,8 @@ import WhitelistTab from '../components/WhitelistTab.vue'
 import TeamTab from '../components/TeamTab.vue'
 import CompanionTab from '../components/CompanionTab.vue'
 import HistoryTab from '../components/HistoryTab.vue'
+import ProTab from '../components/ProTab.vue'
+import SupportTab from '../components/SupportTab.vue'
 import { api, LOADER_NAMES, loadSession, message, session, type Server } from '../lib/api'
 
 const props = defineProps<{ slug: string }>()
@@ -38,6 +40,7 @@ const tabs = computed(() =>
     { id: 'comentarios', label: 'Comentários', show: true },
     { id: 'equipe', label: 'Equipe', show: true },
     { id: 'servidor', label: 'Servidor', show: isAdmin.value },
+    { id: 'pro', label: 'PRO e apoios', show: isAdmin.value },
     { id: 'historico', label: 'Histórico', show: isAdmin.value },
   ].filter((t) => t.show),
 )
@@ -173,6 +176,10 @@ async function save(value: ServerFormValue) {
     <CommentsTab v-else-if="tab === 'comentarios'" :server="server" @stars="setStars" />
     <TeamTab v-else-if="tab === 'equipe'" :server="server" :role="role" />
     <CompanionTab v-else-if="tab === 'servidor'" :server="server" :role="role" />
+    <template v-else-if="tab === 'pro'">
+      <ProTab :server="server" @changed="load" />
+      <SupportTab :server="server" @changed="load" />
+    </template>
     <HistoryTab v-else-if="tab === 'historico'" :server="server" />
   </template>
 </template>

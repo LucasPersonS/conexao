@@ -45,6 +45,61 @@ export interface Server {
   approval: 'pending' | 'approved' | 'rejected' | 'suspended'
   /** Estrelas dadas pelos jogadores no launcher. */
   stars?: number
+  /** Plano PRO ativo e até quando. */
+  pro?: boolean
+  pro_until?: string | null
+  /** Aceita apoio dos jogadores. */
+  supportable?: boolean
+}
+
+export interface PlanOption {
+  sku: string
+  days: number
+  price_cents: number
+  coins: number
+}
+
+export interface ShopCatalog {
+  money_enabled: boolean
+  support_enabled: boolean
+  pro: PlanOption[]
+  featured: PlanOption[]
+  support: { min_cents: number; max_cents: number; fee_percent: number }
+}
+
+export interface ShopOrder {
+  id: string
+  kind: string
+  sku: string
+  pay_with: 'money' | 'coins'
+  amount_cents: number
+  coins: number
+  days: number | null
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'refunded'
+  granted_until: string | null
+}
+
+export interface SupportAdmin {
+  available: boolean
+  can_manage: boolean
+  fee_percent: number
+  account: { mp_user: string; support_enabled: boolean; live_mode: boolean; connected_at: string } | null
+  last_30_days: { count: number; gross_cents: number; fee_cents: number; net_cents: number }
+  recent: {
+    id: string
+    supporter: string | null
+    amount_cents: number
+    fee_cents: number
+    message: string | null
+    status: 'approved' | 'refunded'
+    paid_at: string | null
+  }[]
+}
+
+export interface ServerStats {
+  days: { day: string; whitelist: number; stars: number; comments: number; supports: number; support_net_cents: number }[]
+  whitelist_total: number
+  whitelist_approved: number
 }
 
 export interface VersionItem {
@@ -389,6 +444,20 @@ export const api = {
     request<{ purchase_id: string; checkout_url: string }>('POST', `/v1/servers/${slug}/featured/checkout`, { days, payer }),
   featuredPurchases: (slug: string) => request<FeaturedPurchase[]>('GET', `/v1/servers/${slug}/featured/purchases`),
   featuredPurchase: (slug: string, id: string) => request<FeaturedPurchase>('GET', `/v1/servers/${slug}/featured/purchases/${id}`),
+  shopCatalog: () => request<ShopCatalog>('GET', '/v1/shop/catalog'),
+  wallet: () => request<{ balance: number; premium_until: string | null }>('GET', '/v1/me/wallet'),
+  order: (id: string) => request<ShopOrder>('GET', `/v1/me/orders/${encodeURIComponent(id)}`),
+  /** PRO com dinheiro: devolve o link do Mercado Pago. */
+  proCheckout: (slug: string, sku: string) =>
+    request<{ order_id: string; checkout_url: string }>('POST', '/v1/shop/checkout', { sku, server: slug }),
+  /** PRO ou destaque com Moedas. `key` é único por clique (não cobra duas vezes). */
+  spendCoins: (slug: string, sku: string, key: string) =>
+    request<{ order: ShopOrder; balance: number }>('POST', '/v1/shop/spend', { sku, server: slug, key }),
+  supportAdmin: (slug: string) => request<SupportAdmin>('GET', `/v1/servers/${slug}/support`),
+  payoutConnect: (slug: string) => request<{ url: string }>('POST', `/v1/servers/${slug}/payout/connect`),
+  payoutDisconnect: (slug: string) => request<null>('DELETE', `/v1/servers/${slug}/payout`),
+  payoutSettings: (slug: string, support_enabled: boolean) => request<null>('PUT', `/v1/servers/${slug}/payout`, { support_enabled }),
+  stats: (slug: string) => request<ServerStats>('GET', `/v1/servers/${slug}/stats`),
   profile: (name: string) => request<PublicProfile>('GET', `/v1/profiles/${encodeURIComponent(name)}`),
   posts: (slug: string) => request<{ news: ServerPost[]; events: ServerPost[] }>('GET', `/v1/servers/${slug}/posts`),
   comments: (slug: string, before?: string) =>
@@ -550,4 +619,15 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`
+}
+
+export const money = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+/** Só segue links de pagamento/autorização do Mercado Pago. */
+export function goToMercadoPago(url: string) {
+  const parsed = new URL(url)
+  if (parsed.protocol !== 'https:' || !/(^|\.)mercadopago\.com(\.br)?$|(^|\.)mercadolivre\.com(\.br)?$/.test(parsed.hostname)) {
+    throw new Error('Link de pagamento inesperado. Fale com a equipe Conexão.')
+  }
+  window.location.href = url
 }

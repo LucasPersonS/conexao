@@ -100,16 +100,16 @@ pub async fn resolve(
 
 /// Quanto esta conta ainda pode enviar nas últimas 24 horas. `None` = sem limite (equipe).
 ///
-/// Quem é dono ou admin de um servidor em destaque tem a cota do destaque; os demais,
+/// Quem é dono ou admin de um servidor PRO ou em destaque tem a cota do plano; os demais,
 /// a cota normal de um servidor. Assim uma conta qualquer não lota o disco da VPS.
 async fn user_budget(state: &AppState, user: &User) -> ApiResult<Option<u64>> {
     if user.is_staff {
         return Ok(None);
     }
-    let featured: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM server_members m JOIN servers s ON s.id = m.server_id
-          WHERE m.user_id = $1 AND m.role IN ('owner', 'admin')
-            AND s.featured_until IS NOT NULL AND s.featured_until > now())",
+    let (pro, featured): (bool, bool) = sqlx::query_as(
+        "SELECT COALESCE(bool_or(s.pro_until > now()), FALSE), COALESCE(bool_or(s.featured_until > now()), FALSE)
+           FROM server_members m JOIN servers s ON s.id = m.server_id
+          WHERE m.user_id = $1 AND m.role IN ('owner', 'admin')",
     )
     .bind(user.id)
     .fetch_one(&state.pool)
@@ -121,7 +121,7 @@ async fn user_budget(state: &AppState, user: &User) -> ApiResult<Option<u64>> {
     .bind(user.id)
     .fetch_one(&state.pool)
     .await?;
-    let quota = if featured { state.config.featured_quota_bytes } else { state.config.server_quota_bytes };
+    let quota = crate::policy::quota_by_plan(&state.config, pro, featured);
     Ok(Some(quota.saturating_sub(u64::try_from(used).unwrap_or(0))))
 }
 

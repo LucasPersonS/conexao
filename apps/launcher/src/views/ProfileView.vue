@@ -5,7 +5,7 @@ import ProfileCard from '@profile/ProfileCard.vue'
 import { catalog, DEFAULT_THEME, fontFamily, LINK_LABELS, type ProfileLinks, type ProfileTheme, type PublicProfile } from '@profile/theme'
 import Icon from '../components/Icon.vue'
 import { errorMessage, profiles, type OwnProfile } from '../lib/api'
-import { showToast } from '../lib/store'
+import { go, showToast } from '../lib/store'
 
 const loaded = ref<OwnProfile | null>(null)
 const error = ref<string | null>(null)
@@ -247,6 +247,14 @@ const bioLeft = computed(() => 300 - form.bio.length)
             </div>
           </div>
         </section>
+
+        <div v-if="loaded.premium_enforced && !loaded.premium" class="card upsell">
+          <div>
+            <strong>Molduras animadas, fontes e efeitos exclusivos</strong>
+            <span>Libere tudo com o Conexão+ (Pix, cartão ou Moedas).</span>
+          </div>
+          <button class="btn btn-primary" @click="go('store')">Ver Conexão+</button>
+        </div>
 
         <section class="card">
           <h3>Moldura</h3>
@@ -808,5 +816,23 @@ input[type='color'] {
     position: static;
     order: -1;
   }
+}
+.upsell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-color: var(--lime-line);
+}
+
+.upsell div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.upsell span {
+  color: var(--text-dim);
+  font-size: 13px;
 }
 </style>

@@ -48,7 +48,14 @@ if [ ! -d "$RAIZ/.git" ]; then
 fi
 git -C "$RAIZ" remote get-url origin >/dev/null 2>&1 \
   || git -C "$RAIZ" remote add origin "https://github.com/$REPO.git"
-ANTES="$(git -C "$RAIZ" rev-parse -q --verify HEAD || echo nenhum)"
+# Compara com o último deploy que chegou até o fim (não com o HEAD): se uma execução
+# anterior parou no meio, o que ela não terminou de gerar é gerado de novo agora.
+ULTIMO="$DEPLOY/.ultimo-deploy"
+if [ -s "$ULTIMO" ] && git -C "$RAIZ" cat-file -e "$(cat "$ULTIMO")^{commit}" 2>/dev/null; then
+  ANTES="$(cat "$ULTIMO")"
+else
+  ANTES=nenhum
+fi
 git_ fetch -q origin "$BRANCH"
 git -C "$RAIZ" reset -q --hard "origin/$BRANCH"
 DEPOIS="$(git -C "$RAIZ" rev-parse HEAD)"
@@ -59,22 +66,8 @@ mudou() {
   [ -n "$(git -C "$RAIZ" diff --name-only "$ANTES" "$DEPOIS" -- "$@")" ]
 }
 
-if mudou apps/panel; then
-  passo "Gerando o painel web"
-  docker run --rm -v "$RAIZ":/src -w /src/apps/panel \
-    -e VITE_CONEXAO_API_URL="https://$API_DOMAIN" node:22-bookworm-slim \
-    sh -c "npm ci --no-audit --no-fund && npm run build"
-else
-  echo "   painel sem mudanças"
-fi
-
-if mudou apps/api Cargo.toml Cargo.lock deploy/Dockerfile.api; then
-  passo "Gerando a imagem da API"
-  DOCKER_BUILDKIT=1 docker compose build api
-else
-  echo "   API sem mudanças"
-fi
-
+# Variáveis novas que instalações antigas não têm. Vem antes do build: o docker compose
+# recusa qualquer comando (até o build da API) se faltar uma variável obrigatória.
 # Site público (apps/site) no domínio principal: instalações antigas não têm a variável.
 if ! grep -qE '^CONEXAO_SITE_DOMAIN=.' .env; then
   SITE_DOMAIN="${API_DOMAIN#api.}"
@@ -95,6 +88,22 @@ if ! grep -qE '^CONEXAO_JOIN_DOMAIN=.' .env; then
   echo "   CONEXAO_JOIN_DOMAIN=$JOIN_DOMAIN (adicionado ao .env; crie o registro A no DNS, sem AAAA)"
   sed -i '/^CONEXAO_JOIN_DOMAIN=/d' .env
   printf 'CONEXAO_JOIN_DOMAIN=%s\n' "$JOIN_DOMAIN" >> .env
+fi
+
+if mudou apps/panel; then
+  passo "Gerando o painel web"
+  docker run --rm -v "$RAIZ":/src -w /src/apps/panel \
+    -e VITE_CONEXAO_API_URL="https://$API_DOMAIN" node:22-bookworm-slim \
+    sh -c "npm ci --no-audit --no-fund && npm run build"
+else
+  echo "   painel sem mudanças"
+fi
+
+if mudou apps/api Cargo.toml Cargo.lock deploy/Dockerfile.api; then
+  passo "Gerando a imagem da API"
+  DOCKER_BUILDKIT=1 docker compose build api
+else
+  echo "   API sem mudanças"
 fi
 
 passo "Reiniciando os serviços"
@@ -154,6 +163,7 @@ passo "Conferindo a API"
 for _ in $(seq 1 40); do
   if docker compose exec -T api curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
     echo "   ok — https://$API_DOMAIN/health"
+    echo "$DEPOIS" > "$ULTIMO"
     exit 0
   fi
   sleep 3

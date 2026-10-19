@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { api, LOADER_NAMES, message, session, type Server } from '../lib/api'
 import ApprovalBadge from '../components/ApprovalBadge.vue'
 
 const servers = ref<Server[]>([])
 const error = ref<string | null>(null)
+const route = useRoute()
+
+/** Volta do Mercado Pago quando a conexão da conta não deu certo. */
+const MP_ERRORS: Record<string, string> = {
+  cancelado: 'A conexão com o Mercado Pago foi cancelada.',
+  expirado: 'O pedido de conexão expirou ou já foi usado. Tente conectar de novo pelo painel do servidor.',
+  'sem-permissao': 'Só o dono do servidor pode conectar a conta que recebe os apoios.',
+  falhou: 'O Mercado Pago não autorizou a conexão. Tente de novo.',
+  interno: 'Erro interno ao conectar. Tente de novo em instantes.',
+}
+const mpError = computed(() => (route.query.mp === 'erro' ? MP_ERRORS[String(route.query.motivo)] ?? MP_ERRORS.falhou : null))
 
 onMounted(async () => {
   try {
@@ -27,6 +39,7 @@ onMounted(async () => {
     </div>
   </header>
 
+  <p v-if="mpError" class="error">{{ mpError }}</p>
   <p v-if="error" class="error">{{ error }}</p>
 
   <div v-if="!session.memberships.length" class="card empty">

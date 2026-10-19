@@ -37,6 +37,8 @@ pub struct ServerRow {
     pack_size: Option<i64>,
     allow_offline: bool,
     stars: i64,
+    pro_until: Option<DateTime<Utc>>,
+    supportable: bool,
 }
 
 const SELECT: &str = "SELECT s.id, s.slug, s.name, s.description, s.address, s.minecraft_version, s.loader,
@@ -44,7 +46,9 @@ const SELECT: &str = "SELECT s.id, s.slug, s.name, s.description, s.address, s.m
         s.featured_until, s.status_online, s.status_players, s.status_max_players, s.status_latency_ms,
         s.status_checked_at, s.allow_offline, pv.version AS current_version,
         (SELECT SUM((f->>'size')::BIGINT)::BIGINT FROM jsonb_array_elements(pv.manifest->'files') f) AS pack_size,
-        (SELECT COUNT(*) FROM server_stars st WHERE st.server_id = s.id) AS stars
+        (SELECT COUNT(*) FROM server_stars st WHERE st.server_id = s.id) AS stars,
+        s.pro_until,
+        EXISTS (SELECT 1 FROM server_payout_accounts pa WHERE pa.server_id = s.id AND pa.support_enabled) AS supportable
    FROM servers s
    LEFT JOIN server_channels sc ON sc.server_id = s.id AND sc.channel = 'stable'
    LEFT JOIN pack_versions pv ON pv.id = sc.version_id";
@@ -71,14 +75,18 @@ pub struct ServerDetail {
     pub summary: ServerSummary,
     pub approval: String,
     pub featured_until: Option<DateTime<Utc>>,
+    pub pro_until: Option<DateTime<Utc>>,
 }
 
 impl ServerRow {
     fn into_detail(self) -> ServerDetail {
         let featured = self.featured_until.is_some_and(|until| until > Utc::now());
+        let pro = self.pro_until.is_some_and(|until| until > Utc::now());
+        let supportable = self.supportable && self.approval == "approved";
         ServerDetail {
             approval: self.approval,
             featured_until: self.featured_until.filter(|until| *until > Utc::now()),
+            pro_until: self.pro_until.filter(|until| *until > Utc::now()),
             summary: ServerSummary {
                 id: self.id,
                 slug: self.slug,
@@ -107,6 +115,8 @@ impl ServerRow {
                 pack_size: self.pack_size.and_then(|v| u64::try_from(v).ok()),
                 allow_offline: self.allow_offline,
                 stars: u32::try_from(self.stars).unwrap_or(0),
+                pro,
+                supportable,
             },
         }
     }

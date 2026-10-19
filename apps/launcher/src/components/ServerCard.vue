@@ -18,6 +18,7 @@ const extraTags = () => props.server.tags.length - shownTags().length
   <article class="card" :class="{ offline: !server.status.online }" tabindex="0" @click="$emit('open')" @keydown.enter="$emit('open')">
     <div class="banner" :style="bgImage(server.banner_url)">
       <span v-if="server.featured" class="badge featured">Destaque</span>
+      <span v-if="server.pro" class="badge pro" :class="{ shifted: server.featured }" title="Servidor PRO">PRO</span>
       <span v-if="!server.status.online" class="badge off">Offline</span>
       <div class="actions">
         <StarButton :slug="server.slug" :count="server.stars" light />
@@ -115,6 +116,18 @@ const extraTags = () => props.server.tags.length - shownTags().length
   background: rgba(var(--shade), 0.8);
   border: 1px solid var(--line-strong);
   color: var(--text-dim);
+}
+
+.pro {
+  background: var(--ink);
+  color: var(--lime);
+  border: 1px solid var(--lime);
+  font-family: var(--font-pixel);
+  font-weight: 400;
+}
+
+.pro.shifted {
+  left: 86px;
 }
 
 .featured + .off {

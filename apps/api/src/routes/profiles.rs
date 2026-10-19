@@ -267,6 +267,12 @@ async fn badges(state: &AppState, row: &ProfileRow) -> ApiResult<Vec<Badge>> {
     } else if !roles.is_empty() {
         badges.push(Badge { id: "staff", label: "Staff de servidor".into() });
     }
+    if is_premium(state, row.id).await? {
+        badges.push(Badge { id: "plus", label: "Conexão+".into() });
+    }
+    if crate::routes::support::is_recent_supporter(state, row.id).await? {
+        badges.push(Badge { id: "apoiador", label: "Apoiador".into() });
+    }
     if let Some(until) = state.config.pioneer_until
         && row.created_at < until
     {

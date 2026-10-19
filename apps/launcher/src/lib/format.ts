@@ -71,3 +71,18 @@ export function startsIn(iso: string, now = Date.now()): string | null {
   if (minutes <= 0 || minutes >= 24 * 60) return null
   return minutes < 60 ? `em ${minutes} min` : `em ${Math.round(minutes / 60)} h`
 }
+
+/** 990 → "R$ 9,90" */
+export function formatMoney(cents: number): string {
+  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+/** 1050 → "1.050" */
+export function formatCoins(coins: number): string {
+  return coins.toLocaleString('pt-BR')
+}
+
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
+}

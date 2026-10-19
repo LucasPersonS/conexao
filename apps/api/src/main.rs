@@ -6,8 +6,12 @@
 
 mod agents;
 mod auth;
+mod billing;
+#[cfg(test)]
+mod billing_db_tests;
 mod cleanup;
 mod config;
+mod crypto;
 mod error;
 mod moderation;
 mod monitor;
@@ -38,6 +42,13 @@ async fn main() -> eyre::Result<()> {
         let key = conexao_types::signing::signing_key(&encoded)?;
         println!("CONEXAO_SIGNING_KEY={encoded}   # só na VPS (segredo)");
         println!("CONEXAO_MANIFEST_PUBKEY={}   # no build do launcher", conexao_types::signing::public_key_b64(&key));
+        return Ok(());
+    }
+    if std::env::args().nth(1).as_deref() == Some("gerar-chave-segredos") {
+        use base64::Engine;
+        let mut key = [0u8; 32];
+        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut key);
+        println!("CONEXAO_SECRETS_KEY={}   # só na VPS (segredo; guarde um backup: sem ela as contas conectadas precisam reconectar)", base64::engine::general_purpose::STANDARD.encode(key));
         return Ok(());
     }
     dotenvy::dotenv().ok();

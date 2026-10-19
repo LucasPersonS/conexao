@@ -1,7 +1,7 @@
 import { computed, reactive } from 'vue'
 import { api, errorMessage, type ServerSummary } from './api'
 
-export type View = 'home' | 'browse' | 'server' | 'settings' | 'profile'
+export type View = 'home' | 'browse' | 'server' | 'settings' | 'profile' | 'store'
 export type SortMode = 'players' | 'name' | 'ping'
 
 export const store = reactive({

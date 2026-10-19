@@ -21,3 +21,4 @@ deploy/CHAVE_PUBLICA_LAUNCHER.txt
 deploy/rclone.conf
 deploy/.github-token
 Claude outputs/
+deploy/.ultimo-deploy

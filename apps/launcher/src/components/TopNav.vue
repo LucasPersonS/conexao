@@ -2,7 +2,9 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { Account, MyRoles } from '../lib/api'
 import { formatNumber } from '../lib/format'
+import { formatCoins } from '../lib/format'
 import { go, store, totalPlayers } from '../lib/store'
+import { isPremium, wallet } from '../lib/wallet'
 import Icon from './Icon.vue'
 
 const props = defineProps<{ account: Account; roles: MyRoles | null }>()
@@ -41,6 +43,7 @@ const ROLE_NAMES: Record<string, string> = { owner: 'Dono', admin: 'Admin', mode
       <button class="tab" :class="{ on: store.view === 'browse' || store.view === 'server' }" @click="go('browse')">
         Servidores
       </button>
+      <button class="tab" :class="{ on: store.view === 'store' }" @click="go('store')">Loja</button>
     </div>
 
     <div class="right">
@@ -48,6 +51,11 @@ const ROLE_NAMES: Record<string, string> = { owner: 'Dono', admin: 'Admin', mode
         <span class="dot on" />
         {{ formatNumber(totalPlayers) }} jogando · {{ store.servers.length }} servidores
       </span>
+      <button class="coins" :class="{ plus: isPremium() }" title="Suas Moedas Conexão — abrir a loja" @click="go('store')">
+        <Icon name="coin" :size="16" />
+        {{ formatCoins(wallet.data?.balance ?? 0) }}
+        <span v-if="isPremium()" class="plus-tag">+</span>
+      </button>
       <button class="icon-btn" :class="{ on: store.view === 'settings' }" title="Configurações" @click="go('settings')">
         <Icon name="settings" :size="19" />
       </button>
@@ -67,6 +75,7 @@ const ROLE_NAMES: Record<string, string> = { owner: 'Dono', admin: 'Admin', mode
             </div>
           </div>
           <button class="item highlight" @click="act(() => go('profile'))"><Icon name="star" :size="16" /> Meu perfil</button>
+          <button class="item" @click="act(() => go('store'))"><Icon name="bag" :size="16" /> Loja e Moedas</button>
           <button class="item" @click="act(() => go('settings'))"><Icon name="settings" :size="16" /> Configurações</button>
 
           <template v-if="isAdmin()">
@@ -160,6 +169,35 @@ const ROLE_NAMES: Record<string, string> = { owner: 'Dono', admin: 'Admin', mode
   border: 1px solid rgba(183, 254, 0, 0.18);
   font-size: 13px;
   color: var(--text-dim);
+}
+
+.coins {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--lime-line);
+  background: var(--bg-card);
+  color: var(--lime);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.coins:hover {
+  background: var(--bg-hover);
+}
+
+.plus-tag {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--lime);
+  color: var(--ink);
+  font-size: 12px;
 }
 
 .icon-btn {

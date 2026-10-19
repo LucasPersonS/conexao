@@ -9,6 +9,7 @@ import ServerIcon from '../components/ServerIcon.vue'
 import ServerComments from '../components/ServerComments.vue'
 import ServerNews from '../components/ServerNews.vue'
 import StarButton from '../components/StarButton.vue'
+import SupportCard from '../components/SupportCard.vue'
 import { isFull, slots, toggleSlotWatch } from '../lib/slots'
 import { api, errorMessage, LOADER_NAMES, type InstallState, type ServerSummary } from '../lib/api'
 import { bgImage, formatBytes, formatNumber } from '../lib/format'
@@ -34,7 +35,7 @@ watch(
 )
 
 const size = computed(() => formatBytes(props.server.pack_size))
-const backLabel = computed(() => ({ home: 'Início', browse: 'Servidores', settings: 'Configurações', profile: 'Meu perfil', server: 'Voltar' })[store.back])
+const backLabel = computed(() => ({ home: 'Início', browse: 'Servidores', settings: 'Configurações', profile: 'Meu perfil', store: 'Loja', server: 'Voltar' })[store.back])
 
 async function openFolder() {
   folderError.value = null
@@ -67,7 +68,10 @@ async function copyAddress() {
       <div class="hero-body">
         <ServerIcon :name="server.name" :url="server.icon_url" :size="96" class="icon" />
         <div class="title">
-          <span v-if="server.featured" class="badge"><Icon name="star" :size="12" /> Destaque</span>
+          <div class="badges">
+            <span v-if="server.featured" class="badge"><Icon name="star" :size="12" /> Destaque</span>
+            <span v-if="server.pro" class="badge pro" title="Servidor com plano PRO">PRO</span>
+          </div>
           <h1>{{ server.name }}</h1>
           <div class="meta">
             <span class="players">
@@ -144,6 +148,8 @@ async function copyAddress() {
             Entrar no Discord
           </button>
         </section>
+
+        <SupportCard v-if="server.supportable" :server="server" />
 
         <details class="card tech">
           <summary>Detalhes técnicos <Icon name="chevron" :size="16" /></summary>
@@ -274,6 +280,20 @@ async function copyAddress() {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.badges {
+  display: flex;
+  gap: 6px;
+  align-self: flex-start;
+}
+
+.badge.pro {
+  background: var(--ink);
+  color: var(--lime);
+  border: 1px solid var(--lime);
+  font-family: var(--font-pixel);
+  font-weight: 400;
 }
 
 .badge {

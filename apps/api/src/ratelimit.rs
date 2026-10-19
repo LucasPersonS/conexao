@@ -35,6 +35,12 @@ pub enum Class {
     Upload,
     Report,
     Comment,
+    /// Criar link de pagamento ou gastar moedas.
+    Checkout,
+    /// Começar a conectar a conta do Mercado Pago.
+    Payout,
+    /// Avisos do Mercado Pago.
+    Webhook,
     General,
 }
 
@@ -55,6 +61,9 @@ impl Class {
             Class::Upload => (240.0, 120.0),
             Class::Report => (5.0, 5.0),
             Class::Comment => (6.0, 3.0),
+            Class::Checkout => (10.0, 10.0),
+            Class::Payout => (2.0, 4.0),
+            Class::Webhook => (120.0, 60.0),
             Class::General => (300.0, 150.0),
         }
     }
@@ -82,6 +91,10 @@ pub fn classify(method: &Method, path: &str) -> Class {
         (&Method::PUT, ["files", _]) => Class::Upload,
         (&Method::POST, ["profiles", _, "report"]) => Class::Report,
         (&Method::POST, ["servers", _, "comments"]) => Class::Comment,
+        (&Method::POST, ["shop", "checkout" | "spend"] | ["servers", _, "support", "checkout"]) => Class::Checkout,
+        (&Method::POST, ["servers", _, "payout", "connect"]) | (&Method::GET, ["payments", "mercadopago", "oauth", "callback"]) => Class::Payout,
+        (&Method::POST, ["staff", "coins"]) => Class::Report,
+        (&Method::POST, ["payments", "mercadopago", "webhook", ..]) => Class::Webhook,
         _ => Class::General,
     }
 }
