@@ -10,6 +10,7 @@ import ServerComments from '../components/ServerComments.vue'
 import ServerNews from '../components/ServerNews.vue'
 import StarButton from '../components/StarButton.vue'
 import SupportCard from '../components/SupportCard.vue'
+import SponsorBanner from '../components/SponsorBanner.vue'
 import { isFull, slots, toggleSlotWatch } from '../lib/slots'
 import { api, errorMessage, LOADER_NAMES, type InstallState, type ServerSummary } from '../lib/api'
 import { bgImage, formatBytes, formatNumber } from '../lib/format'
@@ -150,6 +151,8 @@ async function copyAddress() {
         </section>
 
         <SupportCard v-if="server.supportable" :server="server" />
+
+        <SponsorBanner placement="server" variant="side" />
 
         <details class="card tech">
           <summary>Detalhes técnicos <Icon name="chevron" :size="16" /></summary>

@@ -85,8 +85,9 @@ O projeto se chamava CENTRAL. O que mudou e o que fazer fora do código:
   recebe o Conexão como um app novo; o CENTRAL antigo pode ser desinstalado.
 - **Cabeçalhos HTTP**: `X-Conexao-Signature` e `X-Conexao-Staff-Token` (API e launcher precisam ser
   atualizados juntos).
-- **Companion**: mod `conexao_companion`, arquivo `conexao-companion-neoforge-1.21.1.jar` (refaça o build e
-  publique com esse nome). Servidores já vinculados continuam: o mod lê o `config/central-companion.json` antigo.
+- **Companion**: mod `conexao_companion`, agora num repositório próprio (`conexao-companion`): um JAR por
+  versão × loader (`conexao-companion-<loader>-<mc>.jar`, Fabric/Forge/NeoForge, 1.18.2 → 26.x). Servidores já
+  vinculados continuam: o mod lê o `config/central-companion.json` antigo. Veja `docs/companion.md`.
 - **Discord**: a imagem do Rich Presence agora se chama `conexao`.
 - **Painel**: a área da equipe virou `/equipe-conexao` (o endereço antigo redireciona).
 

@@ -4,6 +4,7 @@ import Icon from './Icon.vue'
 import { errorMessage, shop, type ServerSummary, type SupportWall } from '../lib/api'
 import { formatMoney, timeAgo } from '../lib/format'
 import { loadWallet, payWithMoney, wallet } from '../lib/wallet'
+import { openProfile } from '../lib/store'
 
 const props = defineProps<{ server: ServerSummary }>()
 
@@ -116,10 +117,13 @@ async function support() {
 
     <ul v-if="wall?.recent.length" class="wall">
       <li v-for="(s, i) in wall.recent.slice(0, 5)" :key="i">
-        <img v-if="s.supporter_uuid" :src="`https://mc-heads.net/avatar/${s.supporter_uuid}/24`" alt="" />
+        <button v-if="s.supporter_uuid && s.supporter" class="who" :title="`Ver perfil de ${s.supporter}`" @click="openProfile(s.supporter)">
+          <img :src="`https://mc-heads.net/avatar/${s.supporter_uuid}/48`" alt="" />
+        </button>
         <span v-else class="anon"><Icon name="heart" :size="12" /></span>
         <div>
-          <strong>{{ s.supporter ?? 'Apoiador anônimo' }}</strong>
+          <button v-if="s.supporter" class="name" @click="openProfile(s.supporter)">{{ s.supporter }}</button>
+          <strong v-else>Apoiador anônimo</strong>
           <small v-if="s.paid_at"> · {{ timeAgo(new Date(s.paid_at).getTime()) }}</small>
           <p v-if="s.message">{{ s.message }}</p>
         </div>
@@ -256,6 +260,20 @@ textarea {
   display: flex;
   gap: 8px;
   font-size: 13px;
+}
+
+.who {
+  padding: 0;
+  flex: none;
+}
+
+.name {
+  padding: 0;
+  font-weight: 700;
+}
+
+.name:hover {
+  color: var(--lime);
 }
 
 .wall img,

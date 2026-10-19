@@ -324,6 +324,26 @@ export const shop = {
     }),
 }
 
+// ------------------------------------------------------------------ patrocinadores
+
+export type SponsorPlacement = 'home' | 'server' | 'loading'
+
+export interface Sponsor {
+  id: string
+  name: string
+  image_url: string
+  image_side_url: string | null
+  link_url: string
+  alt_text: string | null
+  weight: number
+}
+
+export const sponsorsApi = {
+  list: (placement: SponsorPlacement) => json<Sponsor[]>('GET', `/v1/sponsors/${placement}`),
+  events: (placement: SponsorPlacement, views: string[], click?: string) =>
+    json<null>('POST', '/v1/sponsors/events', { placement, views, click: click ?? null }),
+}
+
 export const posts = {
   of: (slug: string) => json<{ news: ServerPost[]; events: ServerPost[] }>('GET', `/v1/servers/${encodeURIComponent(slug)}/posts`),
   upcoming: () => json<UpcomingEvent[]>('GET', '/v1/events'),

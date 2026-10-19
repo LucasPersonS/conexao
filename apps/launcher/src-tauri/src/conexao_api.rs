@@ -473,6 +473,7 @@ fn route_allowed(method: &str, path: &str) -> bool {
                 | ["profiles", _]
                 | ["events"]
                 | ["servers", _, "posts" | "comments" | "supporters"]
+                | ["sponsors", "home" | "server" | "loading"]
         ) | ("PUT", ["me", "profile"] | ["servers", _, "star"])
             | (
                 "POST",
@@ -480,6 +481,7 @@ fn route_allowed(method: &str, path: &str) -> bool {
                     | ["servers", _, "comments"]
                     | ["shop", "checkout" | "spend"]
                     | ["servers", _, "support", "checkout"]
+                    | ["sponsors", "events"]
             )
             | ("DELETE", ["servers", _, "star"] | ["servers", _, "comments", _])
     )
@@ -572,6 +574,11 @@ mod tests {
         assert!(route_allowed("POST", "/v1/servers/paravexia/support/checkout"));
         assert!(route_allowed("GET", "/v1/servers/paravexia/supporters"));
         assert!(!route_allowed("POST", "/v1/staff/coins"));
+        assert!(route_allowed("GET", "/v1/sponsors/home"));
+        assert!(route_allowed("POST", "/v1/sponsors/events"));
+        assert!(!route_allowed("GET", "/v1/sponsors/qualquer"));
+        assert!(!route_allowed("GET", "/v1/staff/sponsors"));
+        assert!(!route_allowed("POST", "/v1/staff/sponsors/image"));
         assert!(!route_allowed("GET", "/v1/staff/orders"));
         assert!(!route_allowed("POST", "/v1/servers/paravexia/payout/connect"));
         assert!(!route_allowed("GET", "/v1/servers/paravexia/support"));

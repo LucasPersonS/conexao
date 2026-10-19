@@ -3,11 +3,26 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AgentTab from './AgentTab.vue'
-import { COMPANION_DOWNLOAD, api, formatBytes, formatDate, LOADER_NAMES, message, type Server, type SnapshotView } from '../lib/api'
+import {
+  api,
+  companionVersionOf,
+  compareVersions,
+  formatBytes,
+  formatDate,
+  LOADER_NAMES,
+  message,
+  pickCompanionBuild,
+  type CompanionBuild,
+  type CompanionBuilds,
+  type Loader,
+  type Server,
+  type SnapshotView,
+} from '../lib/api'
 
 const props = defineProps<{ server: Server; role: string }>()
 const router = useRouter()
 const snapshot = ref<SnapshotView | null>(null)
+const catalog = ref<CompanionBuilds | null>(null)
 const error = ref<string | null>(null)
 const code = ref('')
 let timer: number | undefined
@@ -20,8 +35,16 @@ async function load() {
     error.value = message(e)
   }
 }
+async function loadBuilds() {
+  try {
+    catalog.value = await api.companionBuilds()
+  } catch {
+    catalog.value = { version: null, builds: [] }
+  }
+}
 onMounted(() => {
   load()
+  loadBuilds()
   timer = window.setInterval(load, 10_000)
 })
 onBeforeUnmount(() => window.clearInterval(timer))
@@ -29,6 +52,36 @@ onBeforeUnmount(() => window.clearInterval(timer))
 const linked = computed(() => !!snapshot.value?.agent_version?.startsWith('companion'))
 const unknownMods = computed(() => snapshot.value?.mods.filter((m) => m.source === 'unknown') ?? [])
 const serverOnly = computed(() => snapshot.value?.mods.filter((m) => m.server_only) ?? [])
+
+/** Versão e loader do servidor: o que o Companion informou ou, antes disso, o cadastro no painel. */
+const target = computed<{ minecraft: string; loader: Loader }>(() => ({
+  minecraft: snapshot.value?.info?.minecraft || props.server.minecraft,
+  loader: snapshot.value?.info?.loader ?? props.server.loader.kind,
+}))
+const build = computed(() => pickCompanionBuild(catalog.value?.builds ?? [], target.value.minecraft, target.value.loader))
+
+/** Todos os JARs, agrupados por versão do Minecraft (mais nova primeiro). */
+const byVersion = computed(() => {
+  const groups = new Map<string, CompanionBuild[]>()
+  for (const b of catalog.value?.builds ?? []) {
+    groups.set(b.minecraft, [...(groups.get(b.minecraft) ?? []), b])
+  }
+  const order: Loader[] = ['fabric', 'forge', 'neoforge']
+  return [...groups.entries()]
+    .sort((a, b) => compareVersions(b[0], a[0]))
+    .map(([minecraft, builds]) => ({
+      minecraft,
+      label: builds.find((b) => b.loader === 'fabric' && b.supports.length > 1)
+        ? `${builds.find((b) => b.loader === 'fabric')!.supports[0]} – ${minecraft}`
+        : minecraft,
+      builds: builds.sort((a, b) => order.indexOf(a.loader) - order.indexOf(b.loader)),
+    }))
+})
+
+const installed = computed(() => companionVersionOf(snapshot.value?.agent_version))
+const updateAvailable = computed(
+  () => !!installed.value && !!catalog.value?.version && compareVersions(installed.value, catalog.value.version) < 0,
+)
 
 function openLink() {
   const value = code.value.trim().toUpperCase()
@@ -70,6 +123,13 @@ function openLink() {
             <span class="muted">{{ snapshot.agent_version }}</span>
           </div>
         </div>
+        <div v-if="updateAvailable" class="update">
+          <div>
+            <strong>Companion {{ catalog?.version }} disponível</strong>
+            <span class="muted">O servidor está com a {{ installed }}. Troque o JAR na pasta mods/ e reinicie.</span>
+          </div>
+          <a v-if="build" :href="build.url" class="btn btn-sm" download>Baixar {{ LOADER_NAMES[build.loader] }} {{ target.minecraft }}</a>
+        </div>
         <div v-if="snapshot.out_of_sync" class="sync">
           <div>
             <strong>Os mods do servidor mudaram desde a última versão publicada.</strong>
@@ -98,8 +158,18 @@ function openLink() {
       <template v-else>
         <ol class="steps">
           <li>
-            <b>Baixe o mod</b> e coloque na pasta <code>mods/</code> do servidor (NeoForge 1.21.1).
-            <a :href="COMPANION_DOWNLOAD" class="btn btn-sm btn-primary dl">Baixar conexao-companion.jar</a>
+            <b>Baixe o mod</b> e coloque na pasta <code>mods/</code> do servidor.
+            <div v-if="build" class="dl">
+              <a :href="build.url" class="btn btn-primary" download>
+                Baixar para {{ LOADER_NAMES[build.loader] }} {{ target.minecraft }}
+              </a>
+              <span class="muted small">{{ build.file }} · {{ formatBytes(build.size) }} · Java {{ build.java }}+</span>
+            </div>
+            <p v-else-if="catalog && catalog.builds.length" class="missing small">
+              Ainda não há Companion para {{ LOADER_NAMES[target.loader] }} {{ target.minecraft }}. Escolha a versão do
+              seu servidor na lista abaixo.
+            </p>
+            <p v-else-if="catalog" class="missing small">O Companion ainda não foi publicado neste Conexão.</p>
           </li>
           <li><b>Reinicie o servidor.</b> O console mostra um link e um código, por exemplo <code>K7Q2-9XMA</code>.</li>
           <li>
@@ -110,8 +180,28 @@ function openLink() {
             </span>
           </li>
         </ol>
-        <p class="muted small">Os jogadores não precisam do mod. Forge, Fabric e outras versões chegam em breve.</p>
+        <p class="muted small">
+          Os jogadores não precisam do mod. Funciona em Fabric, Forge e NeoForge, do Minecraft 1.18.2 ao mais novo.
+        </p>
       </template>
+      <details v-if="byVersion.length" class="versions" :open="!linked && !build">
+        <summary>Outra versão ou loader</summary>
+        <p class="muted small">Use o JAR da versão exata do Minecraft e do loader do servidor.</p>
+        <div v-for="g in byVersion" :key="g.minecraft" class="vrow">
+          <span class="mc">{{ g.label }}</span>
+          <span class="chips">
+            <a
+              v-for="b in g.builds"
+              :key="b.file"
+              :href="b.url"
+              class="chip"
+              :class="{ current: b === build }"
+              :title="`${b.file} · Java ${b.java}+`"
+              download
+            >{{ LOADER_NAMES[b.loader] }}</a>
+          </span>
+        </div>
+      </details>
       <p v-if="error" class="error">{{ error }}</p>
     </section>
 
@@ -235,8 +325,96 @@ h2 {
 }
 
 .dl {
-  margin-left: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.dl .btn {
   text-decoration: none;
+}
+
+.missing {
+  margin: 6px 0 0;
+  color: var(--warn, #d9a400);
+}
+
+.update {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+
+.update div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.update .btn {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.versions {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.versions summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.vrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.vrow .mc {
+  width: 130px;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.chip:hover {
+  border-color: var(--brand);
+  color: var(--text);
+}
+
+.chip.current {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #000;
 }
 
 .code-row {

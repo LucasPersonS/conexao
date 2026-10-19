@@ -255,3 +255,53 @@ async fn late_or_foreign_refunds_are_safe() {
     billing::apply_order_payment(&state, &pid("p1"), &facts(order, "refunded", 500, None), false).await.unwrap();
     assert_eq!(balance(&state.pool, user).await, 0);
 }
+
+#[tokio::test]
+async fn sponsor_counts_once_per_person_and_day() {
+    let Some(state) = setup().await else { return };
+    let viewer = user(&state.pool, 0).await;
+    let other = user(&state.pool, 0).await;
+    let (live, paused, home_only) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    for (id, active, placements) in [(live, true, vec!["home", "loading"]), (paused, false, vec!["home"]), (home_only, true, vec!["home"])] {
+        sqlx::query("INSERT INTO sponsors (id, name, image_url, link_url, placements, active) VALUES ($1, 'Teste', 'x', 'https://exemplo.com', $2, $3)")
+            .bind(id)
+            .bind(placements)
+            .bind(active)
+            .execute(&state.pool)
+            .await
+            .unwrap();
+    }
+    let totals = |id: Uuid, placement: &'static str| {
+        let pool = state.pool.clone();
+        async move {
+            sqlx::query_as::<_, (i64, i64)>(
+                "SELECT COALESCE(SUM(views), 0)::BIGINT, COALESCE(SUM(clicks), 0)::BIGINT FROM sponsor_stats WHERE sponsor_id = $1 AND placement = $2",
+            )
+            .bind(id)
+            .bind(placement)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    let views = |user: Uuid, placement: &'static str, ids: Vec<Uuid>, click: Option<Uuid>| {
+        let state = state.clone();
+        async move {
+            crate::routes::sponsors::record(&state, user, placement, ids, click).await.unwrap();
+        }
+    };
+    // a mesma pessoa vendo várias vezes no mesmo dia conta 1
+    for _ in 0..5 {
+        views(viewer, "home", vec![live, live, paused], None).await;
+    }
+    views(other, "home", vec![live], Some(live)).await;
+    views(other, "home", vec![], Some(live)).await;
+    assert_eq!(totals(live, "home").await, (2, 1));
+    // pausado não conta; posição que o patrocinador não tem não conta
+    assert_eq!(totals(paused, "home").await, (0, 0));
+    views(viewer, "server", vec![home_only], Some(home_only)).await;
+    assert_eq!(totals(home_only, "server").await, (0, 0));
+    // outra posição é outra contagem
+    views(viewer, "loading", vec![live], None).await;
+    assert_eq!(totals(live, "loading").await, (1, 0));
+}

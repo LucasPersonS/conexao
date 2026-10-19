@@ -4,10 +4,11 @@
  * no servidor ou conta cadastrada pelo Discord; a equipe do servidor apaga pelo painel
  * (ou aqui mesmo) e o autor pode apagar o próprio comentário.
  */
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { community, errorMessage, type CommentPage, type ServerComment, type ServerSummary } from '../lib/api'
 import { formatNumber, timeAgo } from '../lib/format'
 import { setStarCount } from '../lib/stars'
+import { openProfile, store } from '../lib/store'
 import Icon from './Icon.vue'
 
 const MAX = 500
@@ -20,6 +21,10 @@ const text = ref('')
 const sending = ref(false)
 const sendError = ref<string | null>(null)
 const confirming = ref<string | null>(null)
+const focused = ref(false)
+const box = ref<HTMLTextAreaElement | null>(null)
+/** Cabeças de skin que não carregaram (mostra a inicial no lugar). */
+const broken = reactive(new Set<string>())
 const removing = ref<string | null>(null)
 
 async function load(slug: string) {
@@ -47,6 +52,18 @@ watch(
 )
 
 const length = computed(() => text.value.trim().length)
+const remaining = computed(() => MAX - length.value)
+/** Anel de caracteres: 0 a 1. */
+const fill = computed(() => Math.min(1, length.value / MAX))
+const RING = 2 * Math.PI * 9
+
+/** O campo cresce com o texto (até ~8 linhas). */
+function grow() {
+  const el = box.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 220)}px`
+}
 const canSend = computed(() => !sending.value && length.value >= 2 && length.value <= MAX)
 
 async function send() {
@@ -58,6 +75,8 @@ async function send() {
     page.value.comments.unshift(comment)
     page.value.total += 1
     text.value = ''
+    await nextTick()
+    grow()
   } catch (e) {
     sendError.value = errorMessage(e)
   } finally {
@@ -87,6 +106,8 @@ async function remove(comment: ServerComment) {
 
 const ROLE_LABEL: Record<string, string> = { owner: 'Dono', admin: 'Admin', moderator: 'Moderador' }
 const initial = (name: string) => name.charAt(0).toUpperCase()
+/** Cabeça da skin (2x para telas nítidas). */
+const head = (uuid: string) => `https://mc-heads.net/avatar/${uuid}/72`
 const when = (iso: string) => timeAgo(new Date(iso).getTime())
 const fullDate = (iso: string) => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 </script>
@@ -104,17 +125,45 @@ const fullDate = (iso: string) => new Date(iso).toLocaleString('pt-BR', { dateSt
     <p v-else-if="!page" class="muted">Carregando…</p>
 
     <template v-else>
-      <form v-if="page.viewer.can_comment" class="form" @submit.prevent="send">
-        <textarea
-          v-model="text"
-          :maxlength="MAX"
-          rows="3"
-          placeholder="Conte o que achou do servidor: a comunidade, a staff, o RP…"
-          @keydown.ctrl.enter.prevent="send"
-        />
-        <div class="form-foot">
-          <span class="hint" :class="{ over: length > MAX }">{{ length }}/{{ MAX }} · sem links</span>
-          <button class="btn btn-primary" :disabled="!canSend">{{ sending ? 'Enviando…' : 'Comentar' }}</button>
+      <form
+        v-if="page.viewer.can_comment"
+        class="composer"
+        :class="{ focused, filled: length > 0, over: remaining < 0 }"
+        @submit.prevent="send"
+      >
+        <img v-if="store.me" class="me" :src="head(store.me.uuid)" :alt="store.me.name" draggable="false" />
+        <div class="field">
+          <textarea
+            ref="box"
+            v-model="text"
+            :maxlength="MAX"
+            rows="1"
+            aria-label="Escreva um comentário"
+            placeholder="Conte o que achou do servidor: a comunidade, a staff, o RP…"
+            @input="grow"
+            @focus="focused = true"
+            @blur="focused = false"
+            @keydown.ctrl.enter.prevent="send"
+          />
+          <div class="tools">
+            <span class="hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> para enviar · sem links</span>
+            <span
+              class="ring"
+              :class="{ warn: remaining <= 50, bad: remaining < 0 }"
+              :title="`${length}/${MAX} caracteres`"
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 22 22" width="22" height="22">
+                <circle cx="11" cy="11" r="9" class="track" />
+                <circle cx="11" cy="11" r="9" class="bar" :stroke-dasharray="RING" :stroke-dashoffset="RING * (1 - fill)" />
+              </svg>
+              <span v-if="remaining <= 50" class="left">{{ remaining }}</span>
+            </span>
+            <button class="send" :disabled="!canSend" :title="sending ? 'Enviando…' : 'Comentar'">
+              <span>{{ sending ? 'Enviando…' : 'Comentar' }}</span>
+              <Icon name="arrow" :size="16" />
+            </button>
+          </div>
         </div>
       </form>
       <p v-else class="locked"><Icon name="lock" :size="16" /> {{ page.viewer.reason }}</p>
@@ -125,10 +174,20 @@ const fullDate = (iso: string) => new Date(iso).toLocaleString('pt-BR', { dateSt
       </p>
       <ul v-else class="list">
         <li v-for="c in page.comments" :key="c.id" class="comment" :class="{ mine: c.mine, team: c.author_role }">
-          <span class="avatar" aria-hidden="true">{{ initial(c.author_name) }}</span>
+          <button class="avatar" :title="`Ver perfil de ${c.author_name}`" @click="openProfile(c.author_name)">
+            <img
+              v-if="!broken.has(c.author_uuid)"
+              :src="head(c.author_uuid)"
+              :alt="c.author_name"
+              loading="lazy"
+              draggable="false"
+              @error="broken.add(c.author_uuid)"
+            />
+            <span v-else aria-hidden="true">{{ initial(c.author_name) }}</span>
+          </button>
           <div class="content">
             <header>
-              <b>{{ c.author_name }}</b>
+              <button class="author" :title="`Ver perfil de ${c.author_name}`" @click="openProfile(c.author_name)">{{ c.author_name }}</button>
               <span v-if="c.author_role" class="role">{{ ROLE_LABEL[c.author_role] }}</span>
               <span v-if="c.mine" class="you">você</span>
               <time class="muted" :datetime="c.created_at" :title="fullDate(c.created_at)">{{ when(c.created_at) }}</time>
@@ -185,7 +244,50 @@ h3 :deep(svg) {
   color: var(--lime);
 }
 
-.form {
+/* Campo de comentário */
+.composer {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  border-radius: 16px;
+  background:
+    linear-gradient(var(--bg-soft), var(--bg-soft)) padding-box,
+    linear-gradient(135deg, var(--line-strong), var(--line)) border-box;
+  border: 1px solid transparent;
+  transition: box-shadow 0.18s, background 0.18s;
+}
+
+.composer.focused {
+  background:
+    linear-gradient(var(--bg-input), var(--bg-input)) padding-box,
+    linear-gradient(135deg, var(--lime), rgba(183, 254, 0, 0.25) 60%, var(--line)) border-box;
+  box-shadow: 0 0 0 4px var(--lime-soft), 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.composer.over {
+  background:
+    linear-gradient(var(--bg-input), var(--bg-input)) padding-box,
+    linear-gradient(135deg, var(--bad), var(--line)) border-box;
+}
+
+.me {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 2px var(--bg-soft), 0 0 0 3px var(--line-strong);
+  transition: box-shadow 0.18s;
+}
+
+.composer.focused .me {
+  box-shadow: 0 0 0 2px var(--bg-input), 0 0 0 3px var(--lime);
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -193,28 +295,126 @@ h3 :deep(svg) {
 
 textarea {
   width: 100%;
-  resize: vertical;
-  min-height: 76px;
+  min-height: 38px;
+  max-height: 220px;
+  resize: none;
+  padding: 8px 2px;
+  border: 0;
+  outline: none;
+  background: transparent;
   font: inherit;
   font-size: 14px;
-  line-height: 1.5;
-  padding: 10px 12px;
+  line-height: 1.55;
+  overflow-y: auto;
 }
 
-.form-foot {
+textarea:focus-visible {
+  outline: none;
+}
+
+.tools {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  opacity: 0.75;
+  transition: opacity 0.18s;
+}
+
+.composer.focused .tools,
+.composer.filled .tools {
+  opacity: 1;
 }
 
 .hint {
+  flex: 1;
   font-size: 12px;
   color: var(--text-faint);
 }
 
-.hint.over {
+kbd {
+  padding: 0 5px;
+  border-radius: 5px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.ring svg {
+  transform: rotate(-90deg);
+}
+
+.ring circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.ring .track {
+  stroke: var(--line);
+}
+
+.ring .bar {
+  stroke: var(--lime);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.15s, stroke 0.15s;
+}
+
+.ring.warn .bar {
+  stroke: var(--warn);
+}
+
+.ring.warn .left {
+  color: var(--warn);
+}
+
+.ring.bad .bar {
+  stroke: var(--bad);
+}
+
+.ring.bad .left {
   color: var(--bad);
+}
+
+.send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--lime);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 13px;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+
+.send:hover:not(:disabled) {
+  background: var(--lime-hi);
+  box-shadow: var(--lime-glow);
+}
+
+.send:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.send:disabled {
+  opacity: 1;
+  background: var(--lime-soft);
+  color: rgba(183, 254, 0, 0.55);
 }
 
 .locked {
@@ -255,20 +455,45 @@ textarea {
 .avatar {
   width: 34px;
   height: 34px;
+  padding: 0;
   display: grid;
   place-items: center;
+  overflow: hidden;
   border-radius: 10px;
   background: var(--bg-hover);
   border: 1px solid var(--line);
   font-family: var(--font-display);
   font-weight: 700;
   color: var(--text-dim);
+  transition: transform 0.12s, box-shadow 0.15s;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.avatar:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px var(--lime-line);
 }
 
 .team .avatar {
-  background: var(--lime-soft);
   border-color: var(--lime-line);
+  box-shadow: 0 0 0 1px var(--lime-line);
+}
+
+.author {
+  padding: 0;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.author:hover {
   color: var(--lime);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .content {

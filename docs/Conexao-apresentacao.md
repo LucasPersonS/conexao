@@ -51,11 +51,10 @@ Pouco trabalho, de propósito:
 
 - **Minecraft:** 1.18.2 ou mais novo (inclui a numeração nova, 26.x).
 - **Loaders:** NeoForge, Forge e Fabric.
-- **Companion:** por enquanto só NeoForge 1.21.1. Forge, Fabric e outras versões vêm a seguir.
+- **Companion:** Fabric, Forge e NeoForge, do 1.18.2 ao 26.x (o painel oferece o JAR certo para cada servidor).
 
 ## Próximos passos
 
 1. Testes com servidores e modpacks reais.
 2. Publicação na VPS (domínio, HTTPS, instalador do launcher).
-3. Companion para Forge e Fabric.
-4. Pagamento automático do destaque.
+3. Pagamento automático do destaque.

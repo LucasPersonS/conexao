@@ -434,6 +434,7 @@ export const api = {
   detectServer: (address: string) =>
     request<DetectedServer>('GET', `/v1/detect/server?address=${encodeURIComponent(address)}`),
   snapshot: (slug: string) => request<SnapshotView>('GET', `/v1/servers/${slug}/snapshot`),
+  companionBuilds: () => request<CompanionBuilds>('GET', '/v1/companion/builds'),
   companionLink: (code: string) => request<LinkView>('GET', `/v1/companion/links/${encodeURIComponent(code)}`),
   confirmLink: (code: string, slug: string) =>
     request<{ ok: boolean; slug: string }>('POST', `/v1/companion/links/${encodeURIComponent(code)}`, { slug }),
@@ -475,6 +476,11 @@ export const api = {
     request<null>('POST', `/v1/staff/profiles/${encodeURIComponent(name)}/ban`, { ban, reason }),
   backgroundsSeen: (names: string[]) => request<{ seen: number }>('POST', '/v1/staff/backgrounds/seen', { names }),
   staffServers: () => request<Server[]>('GET', '/v1/staff/servers'),
+  sponsors: () => request<StaffSponsor[]>('GET', '/v1/staff/sponsors'),
+  createSponsor: (input: SponsorInput) => request<{ id: string }>('POST', '/v1/staff/sponsors', input),
+  updateSponsor: (id: string, input: SponsorInput) => request<null>('PUT', `/v1/staff/sponsors/${id}`, input),
+  deleteSponsor: (id: string) => request<null>('DELETE', `/v1/staff/sponsors/${id}`),
+  sponsorStats: (id: string) => request<{ days: SponsorDay[] }>('GET', `/v1/staff/sponsors/${id}/stats`),
   waitlist: (status: WaitlistStatus) => request<WaitlistList>('GET', `/v1/staff/waitlist?status=${status}`),
   decideWaitlist: (id: string, status: WaitlistStatus, note?: string) =>
     request<WaitlistEntry>('POST', `/v1/staff/waitlist/${id}`, { status, note }),
@@ -580,6 +586,54 @@ export async function uploadFile(sha1: string, file: Blob): Promise<void> {
   }
 }
 
+export type SponsorPlacement = 'home' | 'server' | 'loading'
+
+export interface SponsorInput {
+  name: string
+  image_url: string
+  image_side_url: string | null
+  link_url: string
+  alt_text: string | null
+  placements: SponsorPlacement[]
+  weight: number
+  starts_at: string | null
+  ends_at: string | null
+  active: boolean
+}
+
+export interface StaffSponsor extends SponsorInput {
+  id: string
+  starts_at: string
+  live: boolean
+  views_30d: number
+  clicks_30d: number
+  created_at: string
+}
+
+export interface SponsorDay {
+  day: string
+  placement: SponsorPlacement
+  views: number
+  clicks: number
+}
+
+/** Envia a imagem de um patrocinador (equipe). Devolve a URL limpa pela API. */
+export async function uploadSponsorImage(image: Blob): Promise<string> {
+  let response: Response
+  try {
+    response = await fetch(`${API_URL}/v1/staff/sponsors/image`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.token ?? ''}`, 'Content-Type': image.type || 'application/octet-stream' },
+      body: image,
+    })
+  } catch {
+    throw new ApiError('Falha de rede ao enviar a imagem.', 0)
+  }
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw new ApiError(data?.message ?? `Erro ${response.status} ao enviar a imagem`, response.status)
+  return data.url as string
+}
+
 /** Envia ícone ou banner do servidor (PNG, JPEG ou WebP). */
 export async function uploadImage(slug: string, kind: 'icon' | 'banner', image: Blob): Promise<string> {
   let response: Response
@@ -611,8 +665,48 @@ export async function sha1Hex(file: Blob): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** Download do Conexão Companion (publicado junto com o launcher). */
-export const COMPANION_DOWNLOAD = `${API_URL}/launcher/companion/conexao-companion-neoforge-1.21.1.jar`
+/** Um JAR do Conexão Companion (um por versão do Minecraft × loader). */
+export interface CompanionBuild {
+  /** Versão para a qual foi compilado. */
+  minecraft: string
+  /** Versões em que funciona (Fabric cobre faixas; Forge/NeoForge só a exata). */
+  supports: string[]
+  loader: Loader
+  java: number
+  file: string
+  size: number
+  sha1: string
+  url: string
+}
+
+export interface CompanionBuilds {
+  version: string | null
+  builds: CompanionBuild[]
+}
+
+/** O JAR certo para o servidor: mesmo loader e, de preferência, a mesma versão do Minecraft. */
+export function pickCompanionBuild(builds: CompanionBuild[], minecraft: string | null | undefined, loader: Loader | null | undefined): CompanionBuild | null {
+  if (!minecraft || !loader) return null
+  const same = builds.filter((b) => b.loader === loader)
+  return same.find((b) => b.minecraft === minecraft) ?? same.find((b) => b.supports.includes(minecraft)) ?? null
+}
+
+/** Compara versões tipo 1.21.10 / 26.1.2 (negativo = a < b). */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split(/[.-]/).map((x) => parseInt(x, 10) || 0)
+  const pb = b.split(/[.-]/).map((x) => parseInt(x, 10) || 0)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (d) return d
+  }
+  return 0
+}
+
+/** `companion-neoforge-0.2.0` → `0.2.0` (versão do Companion conectado). */
+export function companionVersionOf(agentVersion: string | null | undefined): string | null {
+  const m = agentVersion?.match(/^companion-.*-(\d+\.\d+\.\d+)$/)
+  return m ? m[1] : null
+}
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

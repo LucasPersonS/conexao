@@ -42,6 +42,7 @@ const ROLE: Record<string, string> = { owner: 'Dono', admin: 'Admin', moderator:
           <span class="label">Equipe Conexão</span>
           <RouterLink to="/equipe-conexao" class="nav">Aprovações e moderação</RouterLink>
           <RouterLink to="/equipe-conexao/lista-de-espera" class="nav">Lista de espera</RouterLink>
+          <RouterLink to="/equipe-conexao/patrocinadores" class="nav">Patrocinadores</RouterLink>
           <RouterLink to="/equipe-conexao/armazenamento" class="nav">Armazenamento</RouterLink>
         </template>
       </nav>

@@ -16,7 +16,16 @@ export const store = reactive({
   browseTag: null as string | null,
   /** Aviso rápido no rodapé (ex.: convite para servidor que não está na lista). */
   toast: null as string | null,
+  /** Conta logada (avatar no campo de comentário etc.). */
+  me: null as { uuid: string; name: string } | null,
+  /** Perfil aberto na janela de perfil (nick), ou nenhum. */
+  viewingProfile: null as string | null,
 })
+
+/** Abre o perfil de um jogador numa janela por cima da tela atual. */
+export function openProfile(name: string) {
+  store.viewingProfile = name
+}
 
 let toastTimer: number | undefined
 export function showToast(text: string) {

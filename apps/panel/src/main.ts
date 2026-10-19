@@ -13,6 +13,7 @@ const router = createRouter({
     { path: '/s/:slug', component: () => import('./views/ServerView.vue'), props: true },
     { path: '/equipe-conexao', component: () => import('./views/StaffView.vue') },
     { path: '/equipe-conexao/armazenamento', component: () => import('./views/StorageView.vue') },
+    { path: '/equipe-conexao/patrocinadores', component: () => import('./views/SponsorsView.vue') },
     { path: '/equipe-conexao/lista-de-espera', component: () => import('./views/WaitlistView.vue') },
     { path: '/equipe-conexao', redirect: '/equipe-conexao' },
     { path: '/link/:code?', component: () => import('./views/LinkView.vue'), props: true },

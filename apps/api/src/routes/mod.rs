@@ -1,5 +1,6 @@
 pub mod community;
 pub mod companion;
+pub mod companion_builds;
 pub mod detect;
 pub mod discord;
 pub mod featured;
@@ -13,6 +14,7 @@ pub mod posts;
 pub mod profiles;
 pub mod servers;
 pub mod shop;
+pub mod sponsors;
 pub mod storage_admin;
 pub mod support;
 pub mod versions;
@@ -92,6 +94,8 @@ pub fn router(state: AppState) -> Router {
         .route("/agent/connect", get(agents::connect))
         .route("/companion/hello", post(companion::hello))
         .route("/companion/poll", post(companion::poll))
+        .route("/companion/builds", get(companion_builds::builds))
+        .route("/companion/download", get(companion_builds::download))
         .route("/companion/links/{code}", get(companion::get_link).post(companion::confirm_link))
         .route("/servers/{slug}/snapshot", get(companion::snapshot))
         .route("/servers/{slug}/versions/plan-from-server", post(companion::plan_from_server))
@@ -140,6 +144,16 @@ pub fn router(state: AppState) -> Router {
         .route("/payments/mercadopago/oauth/callback", get(support::oauth_callback))
         .route("/payments/mercadopago/webhook/apoio/{order_id}", post(support::webhook))
         .route("/staff/coins", post(shop::staff_grant))
+        // Patrocinadores (banners no launcher)
+        .route("/sponsors/{placement}", get(sponsors::list))
+        .route("/sponsors/events", post(sponsors::events))
+        .route("/staff/sponsors", get(sponsors::staff_list).post(sponsors::staff_create))
+        .route("/staff/sponsors/{id}", put(sponsors::staff_update).delete(sponsors::staff_delete))
+        .route("/staff/sponsors/{id}/stats", get(sponsors::staff_stats))
+        .route(
+            "/staff/sponsors/image",
+            post(sponsors::staff_image).layer(DefaultBodyLimit::max(images::MAX_BANNER + 1024)),
+        )
         .route("/staff/orders", get(shop::staff_orders))
         .route("/files/missing", post(files::missing))
         .route("/files/resolve", post(files::resolve))

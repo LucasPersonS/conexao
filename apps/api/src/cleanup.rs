@@ -52,6 +52,9 @@ pub async fn run(state: AppState) {
     let mut interval = tokio::time::interval(RUN_EVERY);
     loop {
         interval.tick().await;
+        if let Err(error) = crate::routes::sponsors::prune_seen(&state).await {
+            tracing::warn!("limpeza das contagens de patrocinadores falhou: {error:?}");
+        }
         match collect(&state).await {
             Ok(report) if report != Report::default() => tracing::info!(
                 "limpeza do storage: {} versão(ões) de servidores recusados, {} arquivo(s) sem uso ({}), {} temporário(s)",

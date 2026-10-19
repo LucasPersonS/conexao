@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import Icon from '../components/Icon.vue'
 import PlayButton from '../components/PlayButton.vue'
+import SponsorBanner from '../components/SponsorBanner.vue'
 import ServerCard from '../components/ServerCard.vue'
 import ServerIcon from '../components/ServerIcon.vue'
 import Spotlight from '../components/Spotlight.vue'
@@ -94,6 +95,8 @@ const popular = computed(() => sortServers(store.servers, 'players').slice(0, 4)
       <Spotlight :servers="spotlight" @open="openServer" />
     </template>
 
+    <SponsorBanner placement="home" variant="wide" class="sponsor-strip" />
+
     <UpcomingEvents />
 
     <div class="section-head">
@@ -122,6 +125,10 @@ const popular = computed(() => sortServers(store.servers, 'players').slice(0, 4)
 </template>
 
 <style scoped>
+.sponsor-strip {
+  margin-top: 8px;
+}
+
 .home {
   display: flex;
   flex-direction: column;

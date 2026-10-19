@@ -10,13 +10,16 @@
 #   3. baixa o instalador do último release publicado e ajusta o latest.json para
 #      apontar para https://api.<domínio>/launcher/ (o /baixar e a atualização
 #      automática do launcher passam a entregar a versão nova);
-#   4. confere o /health.
+#   4. baixa os JARs do Conexão Companion do último release do repositório
+#      conexao-companion (todas as versões e loaders) para /launcher/companion/;
+#   5. confere o /health.
 #
 # Pré-requisito (uma vez só): um token do GitHub só de leitura em deploy/.github-token
 # (veja docs/atualizar.md). O .env, o rclone.conf e os backups nunca são tocados.
 set -euo pipefail
 
 REPO="${CONEXAO_REPO:-LucasPersonS/conexao}"
+COMPANION_REPO="${CONEXAO_COMPANION_REPO:-LucasPersonS/conexao-companion}"
 BRANCH="${CONEXAO_BRANCH:-main}"
 cd "$(dirname "$0")"
 DEPLOY="$(pwd)"
@@ -157,6 +160,41 @@ PY
   fi
 else
   echo "   nenhum release publicado ainda (ou o token não tem acesso) — launcher não mudou"
+fi
+
+passo "Conexão Companion (último release de $COMPANION_REPO)"
+if gh_api -H "Accept: application/vnd.github+json" \
+     "https://api.github.com/repos/$COMPANION_REPO/releases/latest" > "$TMP/companion.json" 2>/dev/null; then
+  python3 - "$TMP/companion.json" > "$TMP/companion.txt" <<'PY'
+import json, re, sys
+rel = json.load(open(sys.argv[1]))
+print(rel["tag_name"])
+for a in rel["assets"]:
+    n = a["name"]
+    if n == "manifest.json" or re.fullmatch(r"conexao-companion-(fabric|forge|neoforge)-[0-9.]+\.jar", n):
+        print(a["url"], n)
+PY
+  CTAG="$(head -n1 "$TMP/companion.txt")"
+  CATUAL="$(docker compose exec -T api sh -c 'cat /data/launcher/companion/.versao 2>/dev/null' || true)"
+  if [ "$CTAG" = "$CATUAL" ]; then
+    echo "   $CTAG já está publicado"
+  else
+    mkdir -p "$TMP/companion"
+    tail -n +2 "$TMP/companion.txt" | while read -r url nome; do
+      gh_api -H "Accept: application/octet-stream" -o "$TMP/companion/$nome" "$url"
+    done
+    [ -f "$TMP/companion/manifest.json" ] || erro "o release $CTAG do Companion não tem manifest.json"
+    echo "   $(ls "$TMP"/companion/*.jar | wc -l) JAR(s)"
+    echo "$CTAG" > "$TMP/companion/.versao"
+    docker compose exec -T api mkdir -p /data/launcher/companion
+    # JARs primeiro, manifest.json e .versao por último (o painel lê o manifesto).
+    for f in "$TMP"/companion/*.jar; do docker compose cp "$f" api:/data/launcher/companion/; done
+    docker compose cp "$TMP/companion/manifest.json" api:/data/launcher/companion/manifest.json
+    docker compose cp "$TMP/companion/.versao" api:/data/launcher/companion/.versao
+    echo "   publicado $CTAG"
+  fi
+else
+  echo "   nenhum release do Companion ainda (ou o token não tem acesso a $COMPANION_REPO)"
 fi
 
 passo "Conferindo a API"

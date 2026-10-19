@@ -11,6 +11,7 @@ import { formatBytes, friendlyError } from '../lib/format'
 import { markPlayed } from '../lib/prefs'
 import { activity, resting } from '../lib/activity'
 import Icon from './Icon.vue'
+import SponsorBanner from './SponsorBanner.vue'
 
 const props = defineProps<{ server: ServerSummary; compact?: boolean }>()
 
@@ -183,6 +184,9 @@ async function onPrimary() {
         </li>
       </ol>
 
+      <!-- Enquanto baixa e abre o jogo: banner de patrocinador (troca a cada 10 s). -->
+      <SponsorBanner v-if="active" placement="loading" variant="side" :interval="10000" class="loading-sponsor" />
+
       <div v-if="error" class="error">
         <p>{{ friendlyError(error) }}</p>
         <div class="error-actions">
@@ -297,6 +301,10 @@ async function onPrimary() {
 
 .hint.bad {
   color: var(--bad);
+}
+
+.loading-sponsor {
+  margin-top: 6px;
 }
 
 .steps {

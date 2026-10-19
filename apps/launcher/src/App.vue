@@ -20,6 +20,7 @@ import ServerView from './views/ServerView.vue'
 import ProfileView from './views/ProfileView.vue'
 import SettingsView from './views/SettingsView.vue'
 import StoreView from './views/StoreView.vue'
+import ProfileModal from './components/ProfileModal.vue'
 
 const ready = ref(false)
 const account = ref<Account | null>(null)
@@ -32,6 +33,9 @@ const pairing = ref(false)
 const content = ref<HTMLElement | null>(null)
 
 const current = computed(() => findServer(store.slug))
+
+// Conta logada disponível para os componentes (ex.: avatar no campo de comentário).
+watch(account, (a) => (store.me = a ? { uuid: a.uuid, name: a.name } : null), { immediate: true })
 
 // Cada tela começa do topo.
 watch(
@@ -181,6 +185,7 @@ onMounted(async () => {
       </main>
       <PanelPairing v-if="pairing" @close="pairing = false" />
       <Onboarding v-if="!prefs.onboarded" />
+      <ProfileModal v-if="store.viewingProfile" :name="store.viewingProfile" @close="store.viewingProfile = null" />
       <Transition name="toast">
         <div v-if="store.toast" class="toast" role="status">{{ store.toast }}</div>
       </Transition>

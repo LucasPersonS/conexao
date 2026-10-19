@@ -46,6 +46,8 @@
 		header /launcher/latest.json Cache-Control "no-cache"
 		# Mesmo nome a cada versão: o navegador sempre confere se mudou.
 		header /launcher/Conexao-Instalador.exe Cache-Control "no-cache"
+		# Companion: mesmo nome a cada versão (o painel lê o manifest.json pela API).
+		header /launcher/companion/* Cache-Control "no-cache"
 		file_server
 	}
 
