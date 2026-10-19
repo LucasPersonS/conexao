@@ -469,8 +469,7 @@ fn route_allowed(method: &str, path: &str) -> bool {
             "GET",
             ["me", "profile" | "stars" | "wallet" | "orders"]
                 | ["me", "orders", _]
-                | ["profile", "catalog"]
-                | ["shop", "catalog"]
+                | ["profile" | "shop", "catalog"]
                 | ["profiles", _]
                 | ["events"]
                 | ["servers", _, "posts" | "comments" | "supporters"]
