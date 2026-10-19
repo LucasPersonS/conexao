@@ -51,7 +51,7 @@ mod tests {
         // outro contexto (linha trocada), outra chave ou um byte alterado: recusa
         assert!(open(&key, b"server-b", &sealed).is_err());
         assert!(open(&[8u8; 32], b"server-a", &sealed).is_err());
-        let mut bad = sealed.clone();
+        let mut bad = sealed;
         *bad.last_mut().unwrap() ^= 1;
         assert!(open(&key, b"server-a", &bad).is_err());
         // nonce novo a cada vez

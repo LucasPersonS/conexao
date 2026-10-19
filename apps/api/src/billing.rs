@@ -718,7 +718,7 @@ mod tests {
         assert!(f.covers(990));
         assert!(!f.covers(991));
         assert_eq!(f.collector_id.as_deref(), Some("12345"));
-        let usd = PaymentFacts { currency: "USD".into(), ..f.clone() };
+        let usd = PaymentFacts { currency: "USD".into(), ..f };
         assert!(!usd.covers(990));
         let weird = PaymentFacts::from_json(&json!({ "transaction_amount": -5, "external_reference": "nao-uuid" }));
         assert_eq!(weird.paid_cents, 0);
