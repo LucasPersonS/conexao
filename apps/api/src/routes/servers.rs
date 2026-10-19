@@ -39,6 +39,8 @@ pub struct ServerRow {
     stars: i64,
     pro_until: Option<DateTime<Utc>>,
     supportable: bool,
+    whitelist_form_url: Option<String>,
+    has_page: bool,
 }
 
 const SELECT: &str = "SELECT s.id, s.slug, s.name, s.description, s.address, s.minecraft_version, s.loader,
@@ -48,7 +50,9 @@ const SELECT: &str = "SELECT s.id, s.slug, s.name, s.description, s.address, s.m
         (SELECT SUM((f->>'size')::BIGINT)::BIGINT FROM jsonb_array_elements(pv.manifest->'files') f) AS pack_size,
         (SELECT COUNT(*) FROM server_stars st WHERE st.server_id = s.id) AS stars,
         s.pro_until,
-        EXISTS (SELECT 1 FROM server_payout_accounts pa WHERE pa.server_id = s.id AND pa.support_enabled) AS supportable
+        EXISTS (SELECT 1 FROM server_payout_accounts pa WHERE pa.server_id = s.id AND pa.support_enabled) AS supportable,
+        s.whitelist_form_url,
+        (s.page <> '{}'::JSONB) AS has_page
    FROM servers s
    LEFT JOIN server_channels sc ON sc.server_id = s.id AND sc.channel = 'stable'
    LEFT JOIN pack_versions pv ON pv.id = sc.version_id";
@@ -117,6 +121,9 @@ impl ServerRow {
                 stars: u32::try_from(self.stars).unwrap_or(0),
                 pro,
                 supportable,
+                whitelist_form_url: self.whitelist_form_url,
+                // Página personalizada só aparece com o PRO ativo (fica guardada quando vence).
+                has_page: pro && self.has_page,
             },
         }
     }
@@ -304,6 +311,20 @@ pub struct ServerPatch {
     pub whitelist_required: Option<bool>,
     /// Aceitar contas não originais (exige Companion 0.2+ e `online-mode=false`).
     pub allow_offline: Option<bool>,
+    /// Google Forms para pedir whitelist; `""` remove.
+    pub whitelist_form_url: Option<String>,
+}
+
+/// Só Google Forms (`docs.google.com/forms/...` ou `forms.gle/...`): o launcher abre o link
+/// no navegador do jogador, então nada de link qualquer na página do servidor.
+pub fn validate_form_url(url: &str) -> ApiResult<()> {
+    let bad = || ApiError::bad("Use um link do Google Forms (https://docs.google.com/forms/... ou https://forms.gle/...).");
+    if url.len() > 500 || url.chars().any(|c| c.is_whitespace() || c.is_control() || matches!(c, '<' | '>' | '"' | '\\')) {
+        return Err(bad());
+    }
+    let ok = url.strip_prefix("https://docs.google.com/forms/").is_some_and(|rest| !rest.is_empty())
+        || url.strip_prefix("https://forms.gle/").is_some_and(|rest| !rest.is_empty());
+    if ok { Ok(()) } else { Err(bad()) }
 }
 
 /// Versão mínima do Companion que aplica o passe de entrada.
@@ -376,6 +397,10 @@ pub async fn update(
         return Err(ApiError::bad("A descrição pode ter no máximo 2000 caracteres."));
     }
     let tags = patch.tags.as_deref().map(validate_tags).transpose()?;
+    let form_url = patch.whitelist_form_url.as_deref().map(str::trim);
+    if let Some(url) = form_url.filter(|u| !u.is_empty()) {
+        validate_form_url(url)?;
+    }
     if patch.allow_offline == Some(true) {
         check_offline_ready(&state, id).await?;
     }
@@ -385,7 +410,8 @@ pub async fn update(
             address = COALESCE($4, address), tags = COALESCE($5, tags),
             icon_url = COALESCE($6, icon_url), banner_url = COALESCE($7, banner_url),
             discord_url = COALESCE($8, discord_url), whitelist_required = COALESCE($9, whitelist_required),
-            allow_offline = COALESCE($10, allow_offline)
+            allow_offline = COALESCE($10, allow_offline),
+            whitelist_form_url = CASE WHEN $11::TEXT IS NULL THEN whitelist_form_url ELSE NULLIF($11, '') END
           WHERE id = $1",
     )
     .bind(id)
@@ -398,6 +424,7 @@ pub async fn update(
     .bind(&patch.discord_url)
     .bind(patch.whitelist_required)
     .bind(patch.allow_offline)
+    .bind(form_url)
     .execute(&state.pool)
     .await?;
     audit(&state.pool, Some(id), Some(user.id), "server.updated", json!({ "allow_offline": patch.allow_offline })).await?;
@@ -597,7 +624,19 @@ pub async fn agent_status(
 
 #[cfg(test)]
 mod tests {
-    use super::companion_supports_tickets;
+    use super::{companion_supports_tickets, validate_form_url};
+
+    #[test]
+    fn form_links() {
+        assert!(validate_form_url("https://docs.google.com/forms/d/e/1FAIpQ/viewform?usp=pp_url&entry.1={nick}").is_ok());
+        assert!(validate_form_url("https://forms.gle/AbC123").is_ok());
+        assert!(validate_form_url("https://forms.gle/").is_err());
+        assert!(validate_form_url("http://forms.gle/AbC123").is_err());
+        assert!(validate_form_url("https://docs.google.com.evil.com/forms/x").is_err());
+        assert!(validate_form_url("https://docs.google.com/document/d/x").is_err());
+        assert!(validate_form_url("https://forms.gle/a b").is_err());
+        assert!(validate_form_url("javascript:alert(1)").is_err());
+    }
 
     #[test]
     fn companion_version_gate() {

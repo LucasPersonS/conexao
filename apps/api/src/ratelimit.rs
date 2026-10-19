@@ -89,6 +89,7 @@ pub fn classify(method: &Method, path: &str) -> Class {
         (&Method::GET, ["detect", "server"]) => Class::Detect,
         (&Method::POST, ["servers"]) => Class::CreateServer,
         (&Method::PUT, ["files", _]) => Class::Upload,
+        (&Method::POST, ["servers", _, "page", "media"]) => Class::Upload,
         (&Method::POST, ["profiles", _, "report"]) => Class::Report,
         (&Method::POST, ["servers", _, "comments"]) => Class::Comment,
         (&Method::POST, ["shop", "checkout" | "spend"] | ["servers", _, "support", "checkout"]) => Class::Checkout,

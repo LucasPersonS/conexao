@@ -6,6 +6,7 @@ pub mod discord;
 pub mod featured;
 pub mod files;
 pub mod images;
+pub mod page;
 pub mod invite;
 pub mod me;
 pub mod meta;
@@ -102,6 +103,11 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/servers/{slug}/images/{kind}",
             post(images::upload).layer(DefaultBodyLimit::max(images::MAX_BANNER + 1024)),
+        )
+        .route("/servers/{slug}/page", get(page::get).put(page::put))
+        .route(
+            "/servers/{slug}/page/media",
+            post(page::upload).layer(DefaultBodyLimit::max(page::MAX_GIF_BYTES + 1024)),
         )
         .route("/servers/{slug}/posts", get(posts::list).post(posts::create))
         .route("/servers/{slug}/posts/{id}", put(posts::update).delete(posts::remove))

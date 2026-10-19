@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import ImagePicker from './ImagePicker.vue'
 import { message, uploadImage, type Loader } from '../lib/api'
 
@@ -17,11 +17,16 @@ export interface ServerFormValue {
   discord_url: string
   whitelist_required: boolean
   allow_offline: boolean
+  whitelist_form_url: string
 }
 
 const props = defineProps<{ initial: ServerFormValue; creating: boolean; busy: boolean }>()
 const emit = defineEmits<{ submit: [value: ServerFormValue]; image: [kind: 'icon' | 'banner', url: string] }>()
 const form = reactive({ ...props.initial })
+const formOk = computed(() => {
+  const url = form.whitelist_form_url.trim()
+  return !url || /^https:\/\/(docs\.google\.com\/forms\/|forms\.gle\/)\S+$/.test(url)
+})
 const uploading = ref<'icon' | 'banner' | null>(null)
 const imageError = ref<string | null>(null)
 
@@ -116,6 +121,25 @@ async function upload(kind: 'icon' | 'banner', file: File) {
       </label>
     </div>
 
+    <div v-if="!creating && form.whitelist_required" class="wl-form">
+      <label class="field">
+        Formulário para pedir whitelist (Google Forms)
+        <input
+          v-model="form.whitelist_form_url"
+          class="input"
+          type="url"
+          maxlength="500"
+          placeholder="https://forms.gle/… ou https://docs.google.com/forms/…"
+        />
+      </label>
+      <p v-if="!formOk" class="hint error">Use um link do Google Forms (docs.google.com/forms ou forms.gle).</p>
+      <p class="hint muted">
+        Quem ainda não tem whitelist vê no launcher os botões <b>Preencher formulário</b> e <b>Entrar no Discord</b>
+        (o Discord é o link acima). Dica: no Google Forms, use <i>Gerar link pré-preenchido</i>, escreva
+        <code>{nick}</code> na pergunta do nick e cole o link aqui: o launcher troca pelo nick do jogador.
+      </p>
+    </div>
+
     <div v-if="!creating" class="offline">
       <label class="check">
         <input v-model="form.allow_offline" type="checkbox" />
@@ -134,12 +158,13 @@ async function upload(kind: 'icon' | 'banner', file: File) {
 
     <div class="actions">
       <slot name="extra" />
-      <button class="btn btn-primary" :disabled="busy">{{ busy ? 'Salvando…' : creating ? 'Cadastrar servidor' : 'Salvar alterações' }}</button>
+      <button class="btn btn-primary" :disabled="busy || !formOk">{{ busy ? 'Salvando…' : creating ? 'Cadastrar servidor' : 'Salvar alterações' }}</button>
     </div>
   </form>
 </template>
 
 <style scoped>
+.wl-form,
 .offline {
   display: flex;
   flex-direction: column;

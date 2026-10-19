@@ -78,14 +78,19 @@ pub async fn store_image(state: &AppState, bytes: &[u8]) -> ApiResult<String> {
     let (clean, ext) = tokio::task::spawn_blocking(move || sanitize(&input))
         .await
         .map_err(|e| ApiError::Internal(e.into()))??;
-    let sha1 = sha1_smol::Sha1::from(&clean).digest().to_string();
+    store_clean(state, &clean, ext).await
+}
+
+/// Grava um arquivo já limpo em `images/{sha1}.{ext}` e devolve a URL pública.
+pub async fn store_clean(state: &AppState, clean: &[u8], ext: &str) -> ApiResult<String> {
+    let sha1 = sha1_smol::Sha1::from(clean).digest().to_string();
     let dir = state.config.storage_dir.join("images");
     tokio::fs::create_dir_all(&dir).await?;
     let name = format!("{sha1}.{ext}");
     let target = dir.join(&name);
     if !tokio::fs::try_exists(&target).await? {
         let tmp = dir.join(format!(".{name}.{}", uuid::Uuid::new_v4()));
-        tokio::fs::write(&tmp, &clean).await?;
+        tokio::fs::write(&tmp, clean).await?;
         tokio::fs::rename(&tmp, &target).await?;
     }
     Ok(format!("{}/images/{name}", state.config.public_url))

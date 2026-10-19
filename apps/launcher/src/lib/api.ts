@@ -36,6 +36,10 @@ export interface ServerSummary {
   pro?: boolean
   /** Aceita apoio dos jogadores (Mercado Pago conectado). */
   supportable?: boolean
+  /** Google Forms para pedir whitelist (pode ter `{nick}`). */
+  whitelist_form_url?: string | null
+  /** Página personalizada ativa (PRO). */
+  has_page?: boolean
 }
 
 export type WhitelistStatus = 'pending' | 'approved' | 'rejected' | 'banned'
@@ -233,6 +237,30 @@ export const community = {
   comments: (slug: string) => json<CommentPage>('GET', `${serverPath(slug)}/comments`),
   comment: (slug: string, body: string) => json<ServerComment>('POST', `${serverPath(slug)}/comments`, { body }),
   deleteComment: (slug: string, id: string) => json<null>('DELETE', `${serverPath(slug)}/comments/${id}`),
+}
+
+// ------------------------------------------------------- página personalizada (PRO)
+
+export interface PageTheme {
+  colors: string[]
+  angle: number
+  style: 'linear' | 'radial'
+  accent?: string | null
+}
+
+export type PageBlock =
+  | { type: 'text'; title: string; body: string }
+  | { type: 'image'; url: string; caption: string }
+  | { type: 'gallery'; urls: string[]; caption: string }
+  | { type: 'video'; youtube: string; caption: string }
+
+export interface ServerPage {
+  active: boolean
+  page: { theme?: PageTheme | null; blocks?: PageBlock[] }
+}
+
+export const pages = {
+  get: (slug: string) => json<ServerPage>('GET', `${serverPath(slug)}/page`),
 }
 
 // ------------------------------------------------------------------ loja e apoio

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import FavoriteButton from '../components/FavoriteButton.vue'
 import Icon from '../components/Icon.vue'
@@ -8,11 +8,13 @@ import PlayButton from '../components/PlayButton.vue'
 import ServerIcon from '../components/ServerIcon.vue'
 import ServerComments from '../components/ServerComments.vue'
 import ServerNews from '../components/ServerNews.vue'
+import ServerShowcase from '../components/ServerShowcase.vue'
 import StarButton from '../components/StarButton.vue'
 import SupportCard from '../components/SupportCard.vue'
 import SponsorBanner from '../components/SponsorBanner.vue'
 import { isFull, slots, toggleSlotWatch } from '../lib/slots'
-import { api, errorMessage, LOADER_NAMES, type InstallState, type ServerSummary } from '../lib/api'
+import { api, errorMessage, LOADER_NAMES, pages, type InstallState, type ServerPage, type ServerSummary } from '../lib/api'
+import { accentColor, gradientCss, pageBackground } from '../lib/page'
 import { bgImage, formatBytes, formatNumber } from '../lib/format'
 import { go, store } from '../lib/store'
 
@@ -21,6 +23,30 @@ const props = defineProps<{ server: ServerSummary }>()
 const install = ref<InstallState | null>(null)
 const folderError = ref<string | null>(null)
 const copied = ref(false)
+/** O botão Jogar está mostrando o formulário/Discord para pedir whitelist. */
+const askingWhitelist = ref(false)
+
+// Página personalizada (PRO): só busca quando o servidor tem uma.
+const page = ref<ServerPage | null>(null)
+watch(
+  () => [props.server.slug, props.server.has_page] as const,
+  async ([slug, hasPage]) => {
+    page.value = null
+    if (!hasPage) return
+    try {
+      const result = await pages.get(slug)
+      if (slug === props.server.slug) page.value = result
+    } catch {
+      page.value = null
+    }
+  },
+  { immediate: true },
+)
+const live = computed(() => (page.value?.active ? page.value.page : null))
+const blocks = computed(() => live.value?.blocks ?? [])
+const accent = computed(() => accentColor(live.value?.theme))
+watch(() => gradientCss(live.value?.theme), (bg) => (pageBackground.value = bg), { immediate: true })
+onBeforeUnmount(() => (pageBackground.value = null))
 
 watch(
   () => props.server.slug,
@@ -59,7 +85,7 @@ async function copyAddress() {
 </script>
 
 <template>
-  <div class="server">
+  <div class="server" :style="accent ? { '--page-accent': accent } : undefined">
     <button class="back" @click="store.view = store.back === 'server' ? 'home' : store.back">
       <Icon name="back" :size="16" /> {{ backLabel }}
     </button>
@@ -103,6 +129,8 @@ async function copyAddress() {
           </div>
         </section>
 
+        <ServerShowcase v-if="blocks.length" :blocks="blocks" />
+
         <ServerNews :server="server" />
 
         <section class="card how">
@@ -112,7 +140,9 @@ async function copyAddress() {
               <b>{{ server.whitelist_required ? 'Peça whitelist' : 'Entrada aberta' }}</b>
               <span>{{
                 server.whitelist_required
-                  ? 'Clique em Pedir whitelist e aguarde a equipe aprovar. Acompanhe pelo Discord do servidor.'
+                  ? server.whitelist_form_url
+                    ? 'Preencha o formulário do servidor, clique em Pedir whitelist e aguarde a equipe aprovar. Acompanhe pelo Discord.'
+                    : 'Clique em Pedir whitelist e aguarde a equipe aprovar. Acompanhe pelo Discord do servidor.'
                   : server.allow_offline
                     ? 'Qualquer jogador pode entrar, com ou sem Minecraft original.'
                     : 'Qualquer jogador com Minecraft original pode entrar.'
@@ -138,14 +168,14 @@ async function copyAddress() {
 
       <aside class="side">
         <section class="card play-card">
-          <PlayButton :server="server" />
+          <PlayButton :server="server" @asking-whitelist="askingWhitelist = $event" />
           <div v-if="isFull(server) || slots.watching.has(server.slug)" class="full">
             <span>{{ slots.watching.has(server.slug) ? 'Esperando vaga… avisamos aqui e no Windows.' : 'Servidor lotado agora.' }}</span>
             <button class="btn" :class="{ 'btn-primary': !slots.watching.has(server.slug) }" @click="toggleSlotWatch(server)">
               <Icon name="bell" :size="16" /> {{ slots.watching.has(server.slug) ? 'Cancelar aviso' : 'Avise-me quando abrir vaga' }}
             </button>
           </div>
-          <button v-if="server.discord_url" class="btn discord" @click="openUrl(server.discord_url)">
+          <button v-if="server.discord_url && !askingWhitelist" class="btn discord" @click="openUrl(server.discord_url)">
             Entrar no Discord
           </button>
         </section>
@@ -203,6 +233,7 @@ async function copyAddress() {
 }
 
 .server {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -273,7 +304,7 @@ async function copyAddress() {
 }
 
 .icon {
-  border: 3px solid var(--lime);
+  border: 3px solid var(--page-accent, var(--lime));
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 24px rgba(183, 254, 0, 0.3);
 }
 

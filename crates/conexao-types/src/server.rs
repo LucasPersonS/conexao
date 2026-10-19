@@ -66,6 +66,12 @@ pub struct ServerSummary {
     /// Aceita apoio dos jogadores (conta Mercado Pago conectada e apoio ligado).
     #[serde(default)]
     pub supportable: bool,
+    /// Formulário (Google Forms) para pedir whitelist. Pode ter `{nick}` no lugar do nick do jogador.
+    #[serde(default)]
+    pub whitelist_form_url: Option<String>,
+    /// Página personalizada ativa (PRO): o launcher busca `/v1/servers/{slug}/page`.
+    #[serde(default)]
+    pub has_page: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

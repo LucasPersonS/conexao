@@ -14,6 +14,7 @@ import CompanionTab from '../components/CompanionTab.vue'
 import HistoryTab from '../components/HistoryTab.vue'
 import ProTab from '../components/ProTab.vue'
 import SupportTab from '../components/SupportTab.vue'
+import PageTab from '../components/PageTab.vue'
 import { api, LOADER_NAMES, loadSession, message, session, type Server } from '../lib/api'
 
 const props = defineProps<{ slug: string }>()
@@ -40,6 +41,7 @@ const tabs = computed(() =>
     { id: 'comentarios', label: 'Comentários', show: true },
     { id: 'equipe', label: 'Equipe', show: true },
     { id: 'servidor', label: 'Servidor', show: isAdmin.value },
+    { id: 'pagina', label: 'Página', show: isAdmin.value },
     { id: 'pro', label: 'PRO e apoios', show: isAdmin.value },
     { id: 'historico', label: 'Histórico', show: isAdmin.value },
   ].filter((t) => t.show),
@@ -78,6 +80,7 @@ const formValue = computed<ServerFormValue | null>(() =>
         discord_url: server.value.discord_url ?? '',
         whitelist_required: server.value.whitelist_required,
         allow_offline: server.value.allow_offline ?? false,
+        whitelist_form_url: server.value.whitelist_form_url ?? '',
       }
     : null,
 )
@@ -98,6 +101,8 @@ async function save(value: ServerFormValue) {
       banner_url: orNull(value.banner_url),
       discord_url: orNull(value.discord_url),
       whitelist_required: value.whitelist_required,
+      // Vazio remove o formulário.
+      whitelist_form_url: value.whitelist_form_url.trim(),
       // Só quando muda: ligar exige o Companion conectado (a API confere na hora).
       ...(value.allow_offline !== (server.value?.allow_offline ?? false) ? { allow_offline: value.allow_offline } : {}),
     })
@@ -176,6 +181,7 @@ async function save(value: ServerFormValue) {
     <CommentsTab v-else-if="tab === 'comentarios'" :server="server" @stars="setStars" />
     <TeamTab v-else-if="tab === 'equipe'" :server="server" :role="role" />
     <CompanionTab v-else-if="tab === 'servidor'" :server="server" :role="role" />
+    <PageTab v-else-if="tab === 'pagina'" :server="server" @changed="load" />
     <template v-else-if="tab === 'pro'">
       <ProTab :server="server" @changed="load" />
       <SupportTab :server="server" @changed="load" />
@@ -270,11 +276,14 @@ async function save(value: ServerFormValue) {
 .tabs {
   display: flex;
   gap: 4px;
+  overflow-x: auto;
   margin: 20px 0 16px;
   border-bottom: 1px solid var(--line);
 }
 
 .tabs button {
+  flex: none;
+  white-space: nowrap;
   border: none;
   background: none;
   padding: 10px 14px;

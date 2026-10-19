@@ -10,10 +10,13 @@ import { api, errorMessage, type AccessResponse, type InstallState, type PlayPro
 import { formatBytes, friendlyError } from '../lib/format'
 import { markPlayed } from '../lib/prefs'
 import { activity, resting } from '../lib/activity'
+import { formLink } from '../lib/page'
+import { store } from '../lib/store'
 import Icon from './Icon.vue'
 import SponsorBanner from './SponsorBanner.vue'
 
 const props = defineProps<{ server: ServerSummary; compact?: boolean }>()
+const emit = defineEmits<{ askingWhitelist: [value: boolean] }>()
 
 const access = ref<AccessResponse | null>(null)
 const accessError = ref<string | null>(null)
@@ -119,6 +122,37 @@ const primary = computed<Primary>(() => {
   return { label: 'Jogar', action: 'play' }
 })
 
+/** Sem whitelist ainda: mostra o formulário e o Discord do servidor para pedir. */
+const askWhitelist = computed(() => {
+  const a = access.value
+  if (props.compact || !a || a.can_play || a.reason || !props.server.whitelist_required) return false
+  if (a.status === 'banned' || a.status === 'approved') return false
+  return !!(props.server.whitelist_form_url || props.server.discord_url)
+})
+watch(askWhitelist, (value) => emit('askingWhitelist', value), { immediate: true })
+
+const askText = computed(() => {
+  const form = !!props.server.whitelist_form_url
+  switch (access.value?.status) {
+    case 'pending':
+      return form
+        ? 'Seu pedido já chegou. Se ainda não preencheu o formulário, preencha agora e acompanhe pelo Discord.'
+        : 'Seu pedido já chegou. Acompanhe a análise pelo Discord do servidor.'
+    case 'rejected':
+      return 'Fale com a equipe do servidor no Discord para saber o motivo.'
+    default: {
+      const then = primary.value.action === 'apply' ? ' Depois clique em Pedir whitelist.' : ''
+      return form
+        ? `Preencha o formulário do servidor e entre no Discord.${then}`
+        : `Entre no Discord do servidor para conversar com a equipe.${then}`
+    }
+  }
+})
+
+function openForm() {
+  if (props.server.whitelist_form_url) openUrl(formLink(props.server.whitelist_form_url, store.me?.name))
+}
+
 const showSteps = computed(() => active.value || (progress.value.stage === 'error' && progress.value.step > 0))
 const error = computed(() => (progress.value.stage === 'error' ? progress.value.message : null))
 
@@ -165,6 +199,17 @@ async function onPrimary() {
     <template v-if="!compact">
       <p v-if="primary.hint && !active && !error" class="hint" :class="primary.tone">{{ primary.hint }}</p>
       <p v-if="accessError && !access" class="hint bad">{{ accessError }}</p>
+
+      <div v-if="askWhitelist && !active" class="ask">
+        <strong>Como pedir whitelist</strong>
+        <span>{{ askText }}</span>
+        <button v-if="server.whitelist_form_url && access?.status !== 'rejected'" class="btn form" @click="openForm">
+          <Icon name="form" :size="16" /> Preencher formulário
+        </button>
+        <button v-if="server.discord_url" class="btn discord" @click="openUrl(server.discord_url)">
+          Entrar no Discord
+        </button>
+      </div>
 
       <ol v-if="showSteps" class="steps">
         <li
@@ -301,6 +346,50 @@ async function onPrimary() {
 
 .hint.bad {
   color: var(--bad);
+}
+
+.ask {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-soft, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--line);
+}
+
+.ask strong {
+  font-size: 14px;
+}
+
+.ask span {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.ask .btn {
+  justify-content: center;
+}
+
+.ask .form {
+  border-color: var(--lime-line);
+  color: var(--lime);
+}
+
+.ask .form:hover:not(:disabled) {
+  background: var(--lime-soft);
+}
+
+.ask .discord {
+  background: #5865f2;
+  border-color: #5865f2;
+  color: #fff;
+}
+
+.ask .discord:hover:not(:disabled) {
+  background: #4752c4;
+  border-color: #4752c4;
 }
 
 .loading-sponsor {

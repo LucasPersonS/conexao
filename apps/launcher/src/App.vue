@@ -21,6 +21,7 @@ import ProfileView from './views/ProfileView.vue'
 import SettingsView from './views/SettingsView.vue'
 import StoreView from './views/StoreView.vue'
 import ProfileModal from './components/ProfileModal.vue'
+import { pageBackground } from './lib/page'
 
 const ready = ref(false)
 const account = ref<Account | null>(null)
@@ -169,7 +170,7 @@ onMounted(async () => {
     />
     <template v-else>
       <TopNav :account="account" :roles="roles" @pair="pairing = true" @token="copyToken" @logout="logout" />
-      <main ref="content" class="content grid-bg">
+      <main ref="content" class="content grid-bg" :class="{ themed: !!pageBackground && store.view === 'server' }" :style="pageBackground && store.view === 'server' ? { '--page-bg': pageBackground } : undefined">
         <div class="page">
           <HomeView v-if="store.view === 'home'" />
           <BrowseView v-else-if="store.view === 'browse'" />
@@ -229,6 +230,16 @@ onMounted(async () => {
   overflow-y: auto;
   background-color: var(--bg);
   background-attachment: local;
+}
+
+/* Página de servidor PRO com gradiente: o fundo fica parado e escurecido para o texto continuar legível. */
+.content.themed {
+  background-image:
+    linear-gradient(rgba(var(--shade), 0.15), rgba(var(--shade), 0.6)),
+    var(--page-bg);
+  background-size: cover, cover;
+  background-attachment: scroll, scroll;
+  transition: background-image 0.3s ease;
 }
 
 .page {

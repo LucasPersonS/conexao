@@ -472,7 +472,7 @@ fn route_allowed(method: &str, path: &str) -> bool {
                 | ["profile" | "shop", "catalog"]
                 | ["profiles", _]
                 | ["events"]
-                | ["servers", _, "posts" | "comments" | "supporters"]
+                | ["servers", _, "posts" | "comments" | "supporters" | "page"]
                 | ["sponsors", "home" | "server" | "loading"]
         ) | ("PUT", ["me", "profile"] | ["servers", _, "star"])
             | (
@@ -566,6 +566,10 @@ mod tests {
         assert!(!route_allowed("GET", "/v1/servers/paravexia/whitelist"));
         assert!(!route_allowed("GET", "/v1/servers/a/b/posts"));
         assert!(route_allowed("GET", "/v1/events"));
+        // página personalizada (PRO): só leitura no launcher
+        assert!(route_allowed("GET", "/v1/servers/paravexia/page"));
+        assert!(!route_allowed("PUT", "/v1/servers/paravexia/page"));
+        assert!(!route_allowed("POST", "/v1/servers/paravexia/page/media"));
         // loja e apoio
         assert!(route_allowed("GET", "/v1/shop/catalog"));
         assert!(route_allowed("GET", "/v1/me/wallet"));

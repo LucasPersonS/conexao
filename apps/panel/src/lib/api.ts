@@ -50,6 +50,39 @@ export interface Server {
   pro_until?: string | null
   /** Aceita apoio dos jogadores. */
   supportable?: boolean
+  /** Google Forms para pedir whitelist (pode ter `{nick}`). */
+  whitelist_form_url?: string | null
+  /** Página personalizada visível no launcher (PRO ativo e página preenchida). */
+  has_page?: boolean
+}
+
+// ------------------------------------------------------- página personalizada (PRO)
+
+export interface PageTheme {
+  colors: string[]
+  angle: number
+  style: 'linear' | 'radial'
+  accent?: string | null
+}
+
+export type PageBlock =
+  | { type: 'text'; title: string; body: string }
+  | { type: 'image'; url: string; caption: string }
+  | { type: 'gallery'; urls: string[]; caption: string }
+  | { type: 'video'; youtube: string; caption: string }
+
+export interface PageData {
+  theme?: PageTheme | null
+  blocks?: PageBlock[]
+}
+
+export interface PageState {
+  active: boolean
+  pro_until: string | null
+  can_edit: boolean
+  page: PageData
+  updated_at: string | null
+  usage?: { uploads_24h: number; bytes_24h: number; max_uploads_24h: number; max_bytes_24h: number }
 }
 
 export interface PlanOption {
@@ -409,6 +442,8 @@ export const api = {
   server: (slug: string) => request<Server>('GET', `/v1/servers/${slug}`),
   createServer: (body: unknown) => request<Server>('POST', '/v1/servers', body),
   updateServer: (slug: string, body: unknown) => request<Server>('PATCH', `/v1/servers/${slug}`, body),
+  page: (slug: string) => request<PageState>('GET', `/v1/servers/${slug}/page`),
+  savePage: (slug: string, page: PageData) => request<PageState>('PUT', `/v1/servers/${slug}/page`, page),
   versions: (slug: string) => request<VersionItem[]>('GET', `/v1/servers/${slug}/versions`),
   setChannel: (slug: string, channel: string, version: string) =>
     request<unknown>('PUT', `/v1/servers/${slug}/channels/${channel}`, { version }),
@@ -649,6 +684,42 @@ export async function uploadImage(slug: string, kind: 'icon' | 'banner', image: 
   const data = await response.json().catch(() => null)
   if (!response.ok) throw new ApiError(data?.message ?? `Erro ${response.status} ao enviar a imagem`, response.status)
   return data.url as string
+}
+
+/** Imagem (PNG, JPEG, WebP) ou GIF animado para os blocos da página personalizada. */
+export async function uploadPageMedia(slug: string, file: Blob): Promise<{ url: string; kind: 'image' | 'gif'; bytes: number }> {
+  let response: Response
+  try {
+    response = await fetch(`${API_URL}/v1/servers/${slug}/page/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.token ?? ''}`, 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    })
+  } catch {
+    throw new ApiError('Falha de rede ao enviar o arquivo.', 0)
+  }
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw new ApiError(data?.message ?? `Erro ${response.status} ao enviar o arquivo`, response.status)
+  return data
+}
+
+/** ID do vídeo a partir de um link do YouTube (a API confere de novo). */
+export function youtubeId(input: string): string | null {
+  const text = input.trim()
+  if (/^[A-Za-z0-9_-]{11}$/.test(text)) return text
+  try {
+    const url = new URL(text)
+    const host = url.hostname.replace(/^(www|m|music)\./, '')
+    let id: string | null = null
+    if (host === 'youtu.be') id = url.pathname.split('/')[1] ?? null
+    else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+      const [, first, second] = url.pathname.split('/')
+      id = first === 'watch' ? url.searchParams.get('v') : ['shorts', 'embed', 'live', 'v'].includes(first) ? (second ?? null) : null
+    }
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null
+  } catch {
+    return null
+  }
 }
 
 /** `data:image/png;base64,...` → Blob (ícone detectado no ping do servidor). */

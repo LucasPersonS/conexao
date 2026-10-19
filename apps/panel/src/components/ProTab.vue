@@ -128,6 +128,7 @@ const maxOf = (key: (typeof SERIES)[number]['key']) => Math.max(1, ...(stats.val
     <ul class="perks">
       <li><b>Mais espaço</b> para configs e arquivos do modpack hospedados no Conexão.</li>
       <li><b>Selo PRO</b> no card e na página do servidor no launcher.</li>
+      <li><b>Página personalizada</b>: fundo em gradiente, imagens, GIFs, galerias e vídeos do YouTube na página do servidor.</li>
       <li><b>Estatísticas</b> de 30 dias: pedidos de whitelist, estrelas, comentários e apoios.</li>
     </ul>
 

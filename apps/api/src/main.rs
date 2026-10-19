@@ -9,6 +9,8 @@ mod auth;
 mod billing;
 #[cfg(test)]
 mod billing_db_tests;
+#[cfg(test)]
+mod page_db_tests;
 mod cleanup;
 mod config;
 mod crypto;

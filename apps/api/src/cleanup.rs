@@ -6,6 +6,9 @@
 //!    agente) e que ninguém enviou ou consultou nas últimas 48 h são apagados: envios
 //!    abandonados, versões que nunca foram publicadas, servidores apagados.
 //! 3. Temporários de envios interrompidos com mais de 24 h somem de `tmp/`.
+//! 4. Imagens e GIFs da página personalizada (PRO) que saíram da página há mais de 48 h
+//!    perdem o registro; o arquivo sai de `images/` se nada mais usa (ícone, banner,
+//!    outra página, patrocinador, fundo de perfil).
 //!
 //! Versões publicadas de servidores aprovados, em análise ou suspensos nunca perdem
 //! arquivos: o rollback para uma versão antiga continua funcionando.
@@ -45,6 +48,7 @@ pub struct Report {
     pub files: u64,
     pub bytes: u64,
     pub temporaries: u64,
+    pub page_media: u64,
 }
 
 pub async fn run(state: AppState) {
@@ -57,11 +61,12 @@ pub async fn run(state: AppState) {
         }
         match collect(&state).await {
             Ok(report) if report != Report::default() => tracing::info!(
-                "limpeza do storage: {} versão(ões) de servidores recusados, {} arquivo(s) sem uso ({}), {} temporário(s)",
+                "limpeza do storage: {} versão(ões) de servidores recusados, {} arquivo(s) sem uso ({}), {} temporário(s), {} imagem(ns) de páginas",
                 report.versions,
                 report.files,
                 crate::policy::megabytes(report.bytes),
-                report.temporaries
+                report.temporaries,
+                report.page_media
             ),
             Ok(_) => tracing::debug!("limpeza do storage: nada a apagar"),
             Err(error) => tracing::warn!("limpeza do storage falhou: {error:?}"),
@@ -91,7 +96,42 @@ pub async fn collect(state: &AppState) -> eyre::Result<Report> {
     report.files = files;
     report.bytes = bytes;
     report.temporaries = remove_old_temporaries(&state.config.storage_dir.join("tmp")).await;
+    report.page_media = remove_unused_page_media(state).await?;
     Ok(report)
+}
+
+/// Imagens enviadas para a página do servidor que não estão mais nela.
+async fn remove_unused_page_media(state: &AppState) -> eyre::Result<u64> {
+    let rows: Vec<(uuid::Uuid, String)> = sqlx::query_as(
+        "SELECT m.id, m.url FROM server_page_media m JOIN servers s ON s.id = m.server_id
+          WHERE m.created_at < now() - make_interval(hours => $1) AND strpos(s.page::TEXT, m.url) = 0
+          LIMIT $2",
+    )
+    .bind(GRACE_HOURS)
+    .bind(BATCH)
+    .fetch_all(&state.pool)
+    .await?;
+    let mut removed = 0;
+    for (id, url) in rows {
+        sqlx::query("DELETE FROM server_page_media WHERE id = $1").bind(id).execute(&state.pool).await?;
+        if !crate::routes::page::is_own_image(&state.config.public_url, &url) {
+            continue;
+        }
+        let used: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM server_page_media WHERE url = $1)
+                 OR EXISTS (SELECT 1 FROM servers WHERE icon_url = $1 OR banner_url = $1 OR strpos(page::TEXT, $1) > 0)
+                 OR EXISTS (SELECT 1 FROM sponsors WHERE image_url = $1 OR image_side_url = $1)
+                 OR EXISTS (SELECT 1 FROM user_profiles WHERE background_url = $1)",
+        )
+        .bind(&url)
+        .fetch_one(&state.pool)
+        .await?;
+        let name = url.rsplit('/').next().unwrap_or_default();
+        if !used && tokio::fs::remove_file(state.config.storage_dir.join("images").join(name)).await.is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(removed)
 }
 
 /// Apaga (banco e disco) os arquivos da lista que estão sem uso, com `grace_hours` de margem.
