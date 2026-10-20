@@ -5,6 +5,7 @@ import FavoriteButton from './FavoriteButton.vue'
 import PingBars from './PingBars.vue'
 import ServerIcon from './ServerIcon.vue'
 import StarButton from './StarButton.vue'
+import centralLogo from '../assets/central.webp'
 
 const props = defineProps<{ server: ServerSummary }>()
 defineEmits<{ open: [] }>()
@@ -25,6 +26,9 @@ const extraTags = () => props.server.tags.length - shownTags().length
         <FavoriteButton class="fav" :slug="server.slug" light />
       </div>
       <ServerIcon class="icon" :name="server.name" :url="server.icon_url" :size="56" />
+      <span v-if="server.central_partner" class="central" title="Servidor do programa SMP da Central (Central SMP's)">
+        <img :src="centralLogo" alt="" /> SMP da Central
+      </span>
     </div>
     <div class="body">
       <h3 :title="server.name">{{ server.name }}</h3>
@@ -150,6 +154,30 @@ const extraTags = () => props.server.tags.length - shownTags().length
 
 .actions .fav {
   width: 32px;
+}
+
+.central {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px 2px 2px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(46, 140, 230, 0.92);
+  box-shadow: 0 0 12px rgba(59, 154, 232, 0.45);
+}
+
+.central img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
 }
 
 .icon {

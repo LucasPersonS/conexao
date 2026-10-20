@@ -114,24 +114,30 @@ async fn remove_unused_page_media(state: &AppState) -> eyre::Result<u64> {
     let mut removed = 0;
     for (id, url) in rows {
         sqlx::query("DELETE FROM server_page_media WHERE id = $1").bind(id).execute(&state.pool).await?;
-        if !crate::routes::page::is_own_image(&state.config.public_url, &url) {
-            continue;
-        }
-        let used: bool = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM server_page_media WHERE url = $1)
-                 OR EXISTS (SELECT 1 FROM servers WHERE icon_url = $1 OR banner_url = $1 OR strpos(page::TEXT, $1) > 0)
-                 OR EXISTS (SELECT 1 FROM sponsors WHERE image_url = $1 OR image_side_url = $1)
-                 OR EXISTS (SELECT 1 FROM user_profiles WHERE background_url = $1)",
-        )
-        .bind(&url)
-        .fetch_one(&state.pool)
-        .await?;
-        let name = url.rsplit('/').next().unwrap_or_default();
-        if !used && tokio::fs::remove_file(state.config.storage_dir.join("images").join(name)).await.is_ok() {
+        if remove_image_if_unused(state, &url).await? {
             removed += 1;
         }
     }
     Ok(removed)
+}
+
+/// Apaga `images/{sha1}.{ext}` do disco se ninguém mais usa a imagem (outra página, ícone,
+/// banner, patrocinador ou fundo de perfil: o arquivo é o mesmo quando o conteúdo é igual).
+pub async fn remove_image_if_unused(state: &AppState, url: &str) -> eyre::Result<bool> {
+    if !crate::routes::page::is_own_image(&state.config.public_url, url) {
+        return Ok(false);
+    }
+    let used: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM server_page_media WHERE url = $1)
+             OR EXISTS (SELECT 1 FROM servers WHERE icon_url = $1 OR banner_url = $1 OR strpos(page::TEXT, $1) > 0)
+             OR EXISTS (SELECT 1 FROM sponsors WHERE image_url = $1 OR image_side_url = $1)
+             OR EXISTS (SELECT 1 FROM user_profiles WHERE background_url = $1)",
+    )
+    .bind(url)
+    .fetch_one(&state.pool)
+    .await?;
+    let name = url.rsplit('/').next().unwrap_or_default();
+    Ok(!used && tokio::fs::remove_file(state.config.storage_dir.join("images").join(name)).await.is_ok())
 }
 
 /// Apaga (banco e disco) os arquivos da lista que estão sem uso, com `grace_hours` de margem.

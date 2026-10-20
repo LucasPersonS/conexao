@@ -22,13 +22,16 @@ use uuid::Uuid;
 
 use crate::auth::{ACCOUNT_OFFLINE, Staff, User, audit, constant_eq, lookup_minecraft_name};
 use crate::error::{ApiError, ApiResult};
-use crate::routes::discord::{discord_app, discord_user_with};
+use crate::auth::USER_COLUMNS;
+use crate::routes::discord::{discord_app, discord_identity_with, oauth_scope};
 use crate::state::AppState;
 
 /// Sessão do site (quem entrou com o Discord), assinada com uma chave só dela.
 const SESSION_COOKIE: &str = "cx_lista";
 /// `state` do OAuth, conferido na volta do Discord.
 const STATE_COOKIE: &str = "cx_lista_estado";
+/// De onde a pessoa veio (`?ref=central`), guardado entre a ida e a volta do Discord.
+const REF_COOKIE: &str = "cx_ref";
 const SESSION_DAYS: i64 = 30;
 const DISCORD_AUTHORIZE: &str = "https://discord.com/oauth2/authorize";
 
@@ -113,6 +116,44 @@ pub async fn grant(state: &AppState, mut user: User) -> ApiResult<User> {
     Ok(user)
 }
 
+/// Atualiza o selo da Central com o que o Discord acabou de confirmar (`None` = não deu para
+/// conferir: fica como está).
+pub async fn mark_central(state: &AppState, mut user: User, member: Option<bool>) -> ApiResult<User> {
+    if let Some(member) = member
+        && member != user.central_member
+    {
+        sqlx::query("UPDATE users SET central_member = $2 WHERE id = $1").bind(user.id).bind(member).execute(&state.pool).await?;
+        user.central_member = member;
+    }
+    Ok(user)
+}
+
+/// Traz para a conta a origem registrada na lista de espera (link `?ref=` e selo da Central),
+/// pelo UUID da conta original ou pelo Discord da conta não original.
+pub async fn adopt_origin(state: &AppState, user: User) -> ApiResult<User> {
+    let updated = sqlx::query_as::<_, User>(&format!(
+        "UPDATE users u
+            SET central_member = u.central_member OR w.central_member,
+                signup_ref = COALESCE(u.signup_ref, w.ref)
+           FROM waitlist w
+          WHERE u.id = $1
+            AND ((u.account_type = 'microsoft' AND w.minecraft_uuid = u.minecraft_uuid)
+              OR (w.discord_id IS NOT NULL AND w.discord_id = u.discord_id))
+            AND (w.central_member AND NOT u.central_member OR (w.ref IS NOT NULL AND u.signup_ref IS NULL))
+      RETURNING {}",
+        USER_COLUMNS.split(", ").map(|c| format!("u.{c}")).collect::<Vec<_>>().join(", ")
+    ))
+    .bind(user.id)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(updated.unwrap_or(user))
+}
+
+/// Origem válida para o link `?ref=` (minúsculas, números e hífen).
+pub fn valid_ref(value: &str) -> bool {
+    (1..=32).contains(&value.len()) && value.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
 /// Checagem barata das rotas do jogo (manifesto): só olha a conta já logada.
 pub fn require_session_access(state: &AppState, user: Option<&User>) -> ApiResult<()> {
     if !state.config.waitlist || user.is_some_and(|u| u.is_staff || u.launcher_access) {
@@ -130,6 +171,12 @@ struct SiteClaims {
     name: String,
     #[serde(default)]
     avatar: Option<String>,
+    /// Membro verificado da Central SMP's (escopo `guilds`).
+    #[serde(default)]
+    central: bool,
+    /// Link de origem (`?ref=central`).
+    #[serde(default)]
+    origin: Option<String>,
     exp: i64,
 }
 
@@ -175,8 +222,16 @@ fn back_to_site(error: Option<&str>) -> String {
     }
 }
 
-/// `GET /v1/waitlist/discord`: manda para a autorização do Discord (só `identify`).
-pub async fn discord_start(State(state): State<AppState>) -> ApiResult<Response> {
+#[derive(Deserialize)]
+pub struct StartQuery {
+    /// Origem do link (`/?ref=central`), repassada pelo site.
+    #[serde(rename = "ref")]
+    origin: Option<String>,
+}
+
+/// `GET /v1/waitlist/discord`: manda para a autorização do Discord (`identify`, e `guilds`
+/// quando a parceria com a Central está configurada).
+pub async fn discord_start(State(state): State<AppState>, Query(query): Query<StartQuery>) -> ApiResult<Response> {
     let Ok((client_id, _)) = discord_app(&state) else {
         return Ok(Redirect::to(&back_to_site(Some("indisponivel"))).into_response());
     };
@@ -186,7 +241,7 @@ pub async fn discord_start(State(state): State<AppState>) -> ApiResult<Response>
         &[
             ("response_type", "code"),
             ("client_id", client_id),
-            ("scope", "identify"),
+            ("scope", oauth_scope(&state)),
             ("prompt", "none"),
             ("redirect_uri", state.config.waitlist_redirect_uri.as_str()),
             ("state", nonce.as_str()),
@@ -195,6 +250,9 @@ pub async fn discord_start(State(state): State<AppState>) -> ApiResult<Response>
     .map_err(|e| ApiError::Internal(e.into()))?;
     let mut response = Redirect::to(url.as_str()).into_response();
     response.headers_mut().append(header::SET_COOKIE, set_cookie(&state, STATE_COOKIE, &nonce, 600)?);
+    if let Some(origin) = query.origin.as_deref().map(str::trim).filter(|o| valid_ref(o)) {
+        response.headers_mut().append(header::SET_COOKIE, set_cookie(&state, REF_COOKIE, origin, 600)?);
+    }
     Ok(response)
 }
 
@@ -221,14 +279,22 @@ pub async fn discord_callback(
     };
     let (location, session) = match code {
         None => (back_to_site(Some("cancelado")), None),
-        Some(code) => match discord_user_with(&state, code, &state.config.waitlist_redirect_uri).await {
-            Ok(user) => {
+        Some(code) => match discord_identity_with(&state, code, &state.config.waitlist_redirect_uri).await {
+            Ok(identity) => {
+                let user = identity.user;
+                let previous = site_session(&state, &headers);
+                let origin = cookie(&headers, REF_COOKIE)
+                    .filter(|o| valid_ref(o))
+                    .or_else(|| previous.and_then(|p| p.origin));
                 let claims = SiteClaims {
                     name: user.global_name.clone().unwrap_or_else(|| user.username.clone()),
                     avatar: user.avatar.filter(|a| a.len() <= 64 && a.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')),
+                    central: identity.central_member.unwrap_or(false),
+                    origin,
                     discord_id: user.id,
                     exp: Utc::now().timestamp() + SESSION_DAYS * 86_400,
                 };
+                refresh_origin(&state, &claims, identity.central_member).await?;
                 let token = jsonwebtoken::encode(&Header::default(), &claims, &EncodingKey::from_secret(&site_secret(&state)))
                     .map_err(|e| ApiError::Internal(e.into()))?;
                 (back_to_site(None), Some(token))
@@ -242,10 +308,38 @@ pub async fn discord_callback(
     let mut response = Redirect::to(&location).into_response();
     let cookies = response.headers_mut();
     cookies.append(header::SET_COOKIE, set_cookie(&state, STATE_COOKIE, "", 0)?);
+    cookies.append(header::SET_COOKIE, set_cookie(&state, REF_COOKIE, "", 0)?);
     if let Some(token) = session {
         cookies.append(header::SET_COOKIE, set_cookie(&state, SESSION_COOKIE, &token, SESSION_DAYS * 86_400)?);
     }
     Ok(response)
+}
+
+/// A cada login no site: atualiza o pedido que já existe (origem e selo da Central) e as
+/// contas do Launcher ligadas a esse Discord.
+async fn refresh_origin(state: &AppState, claims: &SiteClaims, member: Option<bool>) -> ApiResult<()> {
+    sqlx::query(
+        "UPDATE waitlist SET central_member = COALESCE($2, central_member), ref = COALESCE(ref, $3), updated_at = now()
+          WHERE discord_id = $1",
+    )
+    .bind(&claims.discord_id)
+    .bind(member)
+    .bind(&claims.origin)
+    .execute(&state.pool)
+    .await?;
+    if let Some(member) = member {
+        sqlx::query(
+            "UPDATE users u SET central_member = $2
+              WHERE u.discord_id = $1
+                 OR (u.account_type = 'microsoft' AND u.minecraft_uuid IN
+                       (SELECT minecraft_uuid FROM waitlist WHERE discord_id = $1 AND minecraft_uuid IS NOT NULL))",
+        )
+        .bind(&claims.discord_id)
+        .bind(member)
+        .execute(&state.pool)
+        .await?;
+    }
+    Ok(())
 }
 
 /// `POST /v1/waitlist/sair`: apaga a sessão do site.
@@ -296,6 +390,15 @@ pub struct SiteMe {
     pub waiting: i64,
     pub approved: i64,
     pub discord_invite: String,
+    /// Parceria com a Central SMP's configurada (o login confere o servidor dela).
+    pub central_enabled: bool,
+    /// Convite da Central, para o site mostrar.
+    pub central_invite: Option<String>,
+    /// Membro verificado da Central: entra no lote prioritário.
+    pub central: bool,
+    /// Origem registrada (`?ref=`).
+    #[serde(rename = "ref")]
+    pub origin: Option<String>,
 }
 
 /// O Discord já tem acesso por outro caminho: equipe ou conta (não original) já liberada.
@@ -327,10 +430,16 @@ async fn site_me(state: &AppState, claims: Option<&SiteClaims>) -> ApiResult<Sit
         waiting,
         approved,
         discord_invite: state.config.discord_invite.clone(),
+        central_enabled: state.config.central_guild_id.is_some(),
+        central_invite: state.config.central_invite.clone(),
+        central: false,
+        origin: None,
     };
     let Some(claims) = claims else {
         return Ok(me);
     };
+    me.central = claims.central;
+    me.origin = claims.origin.clone();
     me.discord = Some(SiteDiscord {
         name: claims.name.clone(),
         avatar_url: claims
@@ -404,8 +513,9 @@ pub async fn join(State(state): State<AppState>, headers: HeaderMap, Json(input)
     match status.as_deref() {
         None => {
             sqlx::query(
-                "INSERT INTO waitlist (id, discord_id, discord_name, discord_avatar, minecraft_name, minecraft_uuid, account_type)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                "INSERT INTO waitlist (id, discord_id, discord_name, discord_avatar, minecraft_name, minecraft_uuid, account_type,
+                                       ref, central_member)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
             )
             .bind(Uuid::new_v4())
             .bind(&claims.discord_id)
@@ -414,13 +524,15 @@ pub async fn join(State(state): State<AppState>, headers: HeaderMap, Json(input)
             .bind(&name)
             .bind(uuid)
             .bind(kind)
+            .bind(&claims.origin)
+            .bind(claims.central)
             .execute(&state.pool)
             .await?;
         }
         Some(STATUS_PENDING) => {
             sqlx::query(
                 "UPDATE waitlist SET discord_name = $2, discord_avatar = $3, minecraft_name = $4, minecraft_uuid = $5,
-                        account_type = $6, updated_at = now()
+                        account_type = $6, ref = COALESCE(ref, $7), central_member = central_member OR $8, updated_at = now()
                   WHERE discord_id = $1",
             )
             .bind(&claims.discord_id)
@@ -429,6 +541,8 @@ pub async fn join(State(state): State<AppState>, headers: HeaderMap, Json(input)
             .bind(&name)
             .bind(uuid)
             .bind(kind)
+            .bind(&claims.origin)
+            .bind(claims.central)
             .execute(&state.pool)
             .await?;
         }
@@ -528,6 +642,11 @@ pub struct StaffEntry {
     pub created_at: DateTime<Utc>,
     pub decided_at: Option<DateTime<Utc>>,
     pub decided_by_name: Option<String>,
+    /// Link de origem (`?ref=central`).
+    #[serde(rename = "ref")]
+    pub origin: Option<String>,
+    /// Membro verificado da Central SMP's.
+    pub central_member: bool,
 }
 
 #[derive(Serialize)]
@@ -537,15 +656,22 @@ pub struct StaffList {
     pub pending: i64,
     pub approved: i64,
     pub rejected: i64,
+    /// Aguardando e membros verificados da Central (lote prioritário).
+    pub central_pending: i64,
+    pub central_enabled: bool,
 }
 
 #[derive(Deserialize)]
 pub struct StaffListQuery {
     status: Option<String>,
+    /// `central=true`: só membros verificados da Central.
+    #[serde(default)]
+    central: bool,
 }
 
 const STAFF_SELECT: &str = "SELECT w.id, w.discord_id, w.discord_name, w.discord_avatar, w.minecraft_name, w.minecraft_uuid,
-        w.account_type, w.status, w.note, w.created_at, w.decided_at, u.minecraft_name AS decided_by_name
+        w.account_type, w.status, w.note, w.created_at, w.decided_at, u.minecraft_name AS decided_by_name,
+        w.ref AS origin, w.central_member
    FROM waitlist w LEFT JOIN users u ON u.id = w.decided_by";
 
 fn valid_status(status: &str) -> bool {
@@ -563,17 +689,29 @@ pub async fn staff_list(
         return Err(ApiError::bad("Situação inválida."));
     }
     let order = if status == STATUS_PENDING { "w.created_at, w.id" } else { "w.decided_at DESC NULLS LAST, w.created_at DESC" };
-    let entries = sqlx::query_as::<_, StaffEntry>(&format!("{STAFF_SELECT} WHERE w.status = $1 ORDER BY {order} LIMIT 1000"))
-        .bind(&status)
-        .fetch_all(&state.pool)
-        .await?;
-    let (pending, approved, rejected): (i64, i64, i64) = sqlx::query_as(
+    let entries = sqlx::query_as::<_, StaffEntry>(&format!(
+        "{STAFF_SELECT} WHERE w.status = $1 AND ($2 = FALSE OR w.central_member) ORDER BY {order} LIMIT 1000"
+    ))
+    .bind(&status)
+    .bind(query.central)
+    .fetch_all(&state.pool)
+    .await?;
+    let (pending, approved, rejected, central_pending): (i64, i64, i64, i64) = sqlx::query_as(
         "SELECT count(*) FILTER (WHERE status = 'pending'), count(*) FILTER (WHERE status = 'approved'),
-                count(*) FILTER (WHERE status = 'rejected') FROM waitlist",
+                count(*) FILTER (WHERE status = 'rejected'),
+                count(*) FILTER (WHERE status = 'pending' AND central_member) FROM waitlist",
     )
     .fetch_one(&state.pool)
     .await?;
-    Ok(Json(StaffList { enabled: state.config.waitlist, entries, pending, approved, rejected }))
+    Ok(Json(StaffList {
+        enabled: state.config.waitlist,
+        entries,
+        pending,
+        approved,
+        rejected,
+        central_pending,
+        central_enabled: state.config.central_guild_id.is_some(),
+    }))
 }
 
 /// Aplica a decisão às contas que já existem: liberar marca `launcher_access`, recusar tira.
@@ -638,6 +776,9 @@ pub async fn staff_decide(
 #[derive(Deserialize)]
 pub struct NextInput {
     pub count: i64,
+    /// Só membros verificados da Central (lote da parceria).
+    #[serde(default)]
+    pub central: bool,
 }
 
 /// `POST /v1/staff/waitlist/next`: libera os N primeiros da fila de uma vez.
@@ -652,17 +793,26 @@ pub async fn staff_approve_next(
     let actor = staff.as_ref().map(|u| u.id);
     let approved: Vec<(Option<Uuid>, Option<String>)> = sqlx::query_as(
         "UPDATE waitlist SET status = 'approved', decided_at = now(), decided_by = $2, updated_at = now()
-          WHERE id IN (SELECT id FROM waitlist WHERE status = 'pending' ORDER BY created_at, id LIMIT $1 FOR UPDATE SKIP LOCKED)
+          WHERE id IN (SELECT id FROM waitlist WHERE status = 'pending' AND ($3 = FALSE OR central_member)
+                        ORDER BY created_at, id LIMIT $1 FOR UPDATE SKIP LOCKED)
       RETURNING minecraft_uuid, discord_id",
     )
     .bind(input.count)
     .bind(actor)
+    .bind(input.central)
     .fetch_all(&state.pool)
     .await?;
     for (minecraft_uuid, discord_id) in &approved {
         sync_users(&state, *minecraft_uuid, discord_id.as_deref(), true).await?;
     }
-    audit(&state.pool, None, actor, "waitlist.approved_batch", serde_json::json!({ "count": approved.len() })).await?;
+    audit(
+        &state.pool,
+        None,
+        actor,
+        "waitlist.approved_batch",
+        serde_json::json!({ "count": approved.len(), "central": input.central }),
+    )
+    .await?;
     Ok(Json(serde_json::json!({ "approved": approved.len() })))
 }
 
@@ -726,7 +876,16 @@ pub async fn staff_manual(
 mod tests {
     use axum::http::{HeaderMap, HeaderValue, header};
 
-    use super::{back_to_site, cookie, invite_code};
+    use super::{back_to_site, cookie, invite_code, valid_ref};
+
+    #[test]
+    fn accepts_simple_refs_only() {
+        assert!(valid_ref("central"));
+        assert!(valid_ref("smp-123"));
+        for bad in ["", "Central", "a b", "a;b", "a/b", &"x".repeat(33), "café"] {
+            assert!(!valid_ref(bad), "{bad}");
+        }
+    }
 
     #[test]
     fn reads_invite_codes() {

@@ -6,6 +6,7 @@ import { formatCoins } from '../lib/format'
 import { go, store, totalPlayers } from '../lib/store'
 import { isPremium, wallet } from '../lib/wallet'
 import Icon from './Icon.vue'
+import centralLogo from '../assets/central.webp'
 
 const props = defineProps<{ account: Account; roles: MyRoles | null }>()
 const emit = defineEmits<{ pair: []; token: []; logout: [] }>()
@@ -34,6 +35,9 @@ function copyToken() {
 }
 
 const ROLE_NAMES: Record<string, string> = { owner: 'Dono', admin: 'Admin', moderator: 'Moderador' }
+
+/** Selos da parceria Central SMP's (vêm do perfil: membro verificado e equipe de SMP do programa). */
+const centralBadges = () => store.myBadges.filter((b) => b.id === 'central' || b.id === 'smp-central')
 </script>
 
 <template>
@@ -64,6 +68,7 @@ const ROLE_NAMES: Record<string, string> = { owner: 'Dono', admin: 'Admin', mode
         <button class="me" :aria-expanded="open" @click="open = !open">
           <img :src="`https://mc-heads.net/avatar/${account.uuid}/32`" alt="" />
           <span>{{ account.name }}</span>
+          <img v-if="centralBadges().length" :src="centralLogo" alt="" class="central-dot" :title="centralBadges()[0].label" />
           <Icon name="chevron" :size="14" />
         </button>
         <div v-if="open" class="menu">
@@ -73,6 +78,9 @@ const ROLE_NAMES: Record<string, string> = { owner: 'Dono', admin: 'Admin', mode
               <strong>{{ account.name }}</strong>
               <small>{{ account.kind === 'offline' ? 'Conta não original (Discord)' : 'Conta Microsoft' }}</small>
             </div>
+          </div>
+          <div v-if="centralBadges().length" class="central-roles">
+            <span v-for="b in centralBadges()" :key="b.id" class="central-role"><img :src="centralLogo" alt="" /> {{ b.label }}</span>
           </div>
           <button class="item highlight" @click="act(() => go('profile'))"><Icon name="star" :size="16" /> Meu perfil</button>
           <button class="item" @click="act(() => go('store'))"><Icon name="bag" :size="16" /> Loja e Moedas</button>
@@ -282,6 +290,43 @@ const ROLE_NAMES: Record<string, string> = { owner: 'Dono', admin: 'Admin', mode
 
 .who small {
   color: var(--text-faint);
+}
+
+.central-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px #3b9ae8;
+}
+
+.central-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 8px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.central-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px 2px 2px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #eaf4ff;
+  background: rgba(46, 140, 230, 0.28);
+  border: 1px solid rgba(124, 192, 247, 0.6);
+}
+
+.central-role img {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
 }
 
 .item {

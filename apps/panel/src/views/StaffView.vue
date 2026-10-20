@@ -86,6 +86,18 @@ async function approval(slug: string, value: string) {
   }
 }
 
+async function central(slug: string, enable: boolean) {
+  busy.value = true
+  try {
+    await api.setCentral(slug, enable)
+    await load()
+  } catch (e) {
+    error.value = message(e)
+  } finally {
+    busy.value = false
+  }
+}
+
 async function feature(slug: string, enable: boolean) {
   busy.value = true
   try {
@@ -208,6 +220,7 @@ async function feature(slug: string, enable: boolean) {
           <th>Situação</th>
           <th>Jogadores</th>
           <th>Destaque</th>
+          <th title="Programa SMP da Central (parceria Central SMP's)">Central</th>
           <th />
         </tr>
       </thead>
@@ -219,6 +232,12 @@ async function feature(slug: string, enable: boolean) {
           <td>
             <span v-if="s.featured" class="badge brand">Até {{ formatDate(s.featured_until ?? null) }}</span>
             <span v-else class="muted">—</span>
+          </td>
+          <td>
+            <label class="central-toggle" :title="s.central_partner ? 'Tirar do programa SMP da Central' : 'Colocar no programa SMP da Central'">
+              <input type="checkbox" :checked="!!s.central_partner" :disabled="busy" @change="central(s.slug, !s.central_partner)" />
+              <span>SMP da Central</span>
+            </label>
           </td>
           <td class="actions">
             <template v-if="s.approval === 'approved'">
@@ -240,6 +259,17 @@ async function feature(slug: string, enable: boolean) {
 </template>
 
 <style scoped>
+.central-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+.central-toggle input {
+  accent-color: #3b9ae8;
+}
 .lead {
   margin: 6px 0 20px;
 }

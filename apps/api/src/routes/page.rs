@@ -169,9 +169,20 @@ pub fn is_own_image(public_url: &str, url: &str) -> bool {
     hash.len() == 40 && hash.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) && matches!(ext, "png" | "jpg" | "gif")
 }
 
+/// Imagem que o painel ainda vai enviar (`pending:0`, `pending:1`…): aceita só na conferência
+/// antes de salvar ([`check`]); a página salva nunca guarda isso.
+pub fn is_pending_image(url: &str) -> bool {
+    url.strip_prefix("pending:").is_some_and(|n| (1..=2).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// Confere e normaliza a página (textos aparados, vídeos viram ID). Devolve também as
 /// imagens usadas, para conferir se foram enviadas para este servidor.
 pub fn validate(public_url: &str, input: Page) -> Result<(Page, Vec<String>), String> {
+    validate_with(public_url, input, false)
+}
+
+fn validate_with(public_url: &str, input: Page, allow_pending: bool) -> Result<(Page, Vec<String>), String> {
+    let image_ok = |url: &str| is_own_image(public_url, url) || (allow_pending && is_pending_image(url));
     let theme = match input.theme {
         None => None,
         Some(theme) => {
@@ -211,7 +222,7 @@ pub fn validate(public_url: &str, input: Page) -> Result<(Page, Vec<String>), St
                 Block::Text { title, body }
             }
             Block::Image { url, caption } => {
-                if !is_own_image(public_url, &url) {
+                if !image_ok(&url) {
                     return Err(format!("Bloco {n}: envie a imagem pelo painel."));
                 }
                 images.push(url.clone());
@@ -221,7 +232,7 @@ pub fn validate(public_url: &str, input: Page) -> Result<(Page, Vec<String>), St
                 if !(2..=MAX_GALLERY).contains(&urls.len()) {
                     return Err(format!("Bloco {n}: a galeria precisa de 2 a {MAX_GALLERY} imagens."));
                 }
-                if urls.iter().any(|u| !is_own_image(public_url, u)) {
+                if urls.iter().any(|u| !image_ok(u)) {
                     return Err(format!("Bloco {n}: envie as imagens da galeria pelo painel."));
                 }
                 images.extend(urls.iter().cloned());
@@ -478,7 +489,143 @@ pub async fn put(
     Ok(Json(respond(&state, row, Some(&user)).await?))
 }
 
-/// Envia uma imagem (PNG, JPEG, WebP) ou GIF animado para usar nos blocos.
+#[derive(Deserialize)]
+pub struct CheckUpload {
+    pub bytes: i64,
+    #[serde(default)]
+    pub gif: bool,
+}
+
+#[derive(Deserialize)]
+pub struct CheckInput {
+    pub page: Page,
+    /// Arquivos que o painel vai enviar ao salvar, na ordem dos `pending:N`.
+    #[serde(default)]
+    pub uploads: Vec<CheckUpload>,
+}
+
+/// `POST /v1/servers/{slug}/page/check`: confere a página e o limite de envios ANTES de o
+/// painel enviar as imagens novas. Assim nada vai para o armazenamento se a página tiver
+/// um erro: as imagens só sobem quando a pessoa salva e a página passa.
+pub async fn check(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(slug): Path<String>,
+    Json(input): Json<CheckInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let row = load(&state, &slug).await?;
+    require_role(&state.pool, row.id, &user, Role::Admin).await?;
+    require_pro(&row, &user)?;
+    if input.uploads.len() > MAX_IMAGES {
+        return Err(ApiError::bad(format!("Use no máximo {MAX_IMAGES} imagens na página.")));
+    }
+    for (i, upload) in input.uploads.iter().enumerate() {
+        let max = if upload.gif { MAX_GIF_BYTES } else { MAX_IMAGE_BYTES } as i64;
+        if !(1..=max).contains(&upload.bytes) {
+            return Err(ApiError::bad(format!(
+                "Arquivo {}: {} com no máximo {} MB.",
+                i + 1,
+                if upload.gif { "GIF" } else { "imagem" },
+                max / 1024 / 1024
+            )));
+        }
+    }
+    let (_, images) = validate_with(&state.config.public_url, input.page, true).map_err(ApiError::bad)?;
+    let pending = images.iter().filter(|u| is_pending_image(u)).collect::<HashSet<_>>().len();
+    if pending > input.uploads.len() {
+        return Err(ApiError::bad("Falta enviar uma das imagens novas. Escolha o arquivo de novo."));
+    }
+    let used = usage(&state, row.id).await?;
+    let bytes: i64 = input.uploads.iter().map(|u| u.bytes).sum();
+    if used.uploads_24h + input.uploads.len() as i64 > DAILY_UPLOADS || used.bytes_24h + bytes > DAILY_UPLOAD_BYTES {
+        return Err(ApiError::bad(format!(
+            "Essas imagens passam do limite de envios das últimas 24 horas ({} de {DAILY_UPLOADS} envios usados). \
+             Tire algumas ou tente de novo amanhã.",
+            used.uploads_24h
+        )));
+    }
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct MediaItem {
+    pub id: Uuid,
+    pub url: String,
+    pub kind: String,
+    pub bytes: i64,
+    pub created_at: DateTime<Utc>,
+    pub uploaded_by_name: Option<String>,
+    /// Está na página salva (não dá para apagar sem tirar do bloco antes).
+    pub in_use: bool,
+}
+
+#[derive(Serialize)]
+pub struct MediaList {
+    pub items: Vec<MediaItem>,
+    pub total_bytes: i64,
+}
+
+/// `GET /v1/servers/{slug}/page/media`: imagens e GIFs guardados para a página do servidor.
+pub async fn media_list(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(slug): Path<String>,
+) -> ApiResult<Json<MediaList>> {
+    let row = load(&state, &slug).await?;
+    require_role(&state.pool, row.id, &user, Role::Admin).await?;
+    let items = sqlx::query_as::<_, MediaItem>(
+        "SELECT m.id, m.url, m.kind, m.bytes, m.created_at, u.minecraft_name AS uploaded_by_name,
+                strpos(s.page::TEXT, m.url) > 0 AS in_use
+           FROM server_page_media m
+           JOIN servers s ON s.id = m.server_id
+           LEFT JOIN users u ON u.id = m.uploaded_by
+          WHERE m.server_id = $1
+          ORDER BY m.created_at DESC",
+    )
+    .bind(row.id)
+    .fetch_all(&state.pool)
+    .await?;
+    let total_bytes = items.iter().map(|m| m.bytes).sum();
+    Ok(Json(MediaList { items, total_bytes }))
+}
+
+/// `DELETE /v1/servers/{slug}/page/media/{id}`: tira a imagem do armazenamento do servidor
+/// (e do disco, se nada mais usa o mesmo arquivo). Imagem que está na página salva precisa
+/// sair do bloco antes, para a página no launcher nunca ficar com imagem quebrada.
+pub async fn media_delete(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((slug, id)): Path<(String, Uuid)>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let row = load(&state, &slug).await?;
+    require_role(&state.pool, row.id, &user, Role::Admin).await?;
+    let mut tx = state.pool.begin().await?;
+    // Trava a página: um "salvar" ao mesmo tempo não volta a usar a imagem no meio da exclusão.
+    let page: serde_json::Value = sqlx::query_scalar("SELECT page FROM servers WHERE id = $1 FOR UPDATE")
+        .bind(row.id)
+        .fetch_one(&mut *tx)
+        .await?;
+    let url: String = sqlx::query_scalar("SELECT url FROM server_page_media WHERE id = $1 AND server_id = $2")
+        .bind(id)
+        .bind(row.id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if page.to_string().contains(&url) {
+        return Err(ApiError::bad("Essa imagem está na página. Tire ela do bloco, salve e depois apague."));
+    }
+    let bytes: i64 = sqlx::query_scalar("DELETE FROM server_page_media WHERE id = $1 RETURNING bytes")
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    let from_disk = crate::cleanup::remove_image_if_unused(&state, &url).await.map_err(ApiError::Internal)?;
+    audit(&state.pool, Some(row.id), Some(user.id), "page.media_deleted", json!({ "url": url, "bytes": bytes })).await?;
+    Ok(Json(json!({ "ok": true, "bytes": bytes, "removed_from_disk": from_disk })))
+}
+
+/// Envia uma imagem (PNG, JPEG, WebP) ou GIF animado para usar nos blocos. O painel só
+/// chama isto ao salvar a página, depois de [`check`] aprovar.
 pub async fn upload(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

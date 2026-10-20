@@ -59,7 +59,7 @@ const isUrl = (value: string) => /^https:\/\//.test(value)
         <span v-if="profile.pronouns">· {{ profile.pronouns }}</span>
       </div>
       <div v-if="profile.badges.length" class="cp-badges">
-        <span v-for="b in profile.badges" :key="b.id" class="cp-badge">{{ b.label }}</span>
+        <span v-for="b in profile.badges" :key="b.id" class="cp-badge" :data-badge="b.id">{{ b.label }}</span>
       </div>
       <p v-if="profile.bio && !compact" class="cp-bio">{{ profile.bio }}</p>
       <div v-if="links.length && !compact" class="cp-links">

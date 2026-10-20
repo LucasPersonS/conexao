@@ -41,6 +41,7 @@ pub struct ServerRow {
     supportable: bool,
     whitelist_form_url: Option<String>,
     has_page: bool,
+    central_partner: bool,
 }
 
 const SELECT: &str = "SELECT s.id, s.slug, s.name, s.description, s.address, s.minecraft_version, s.loader,
@@ -52,7 +53,8 @@ const SELECT: &str = "SELECT s.id, s.slug, s.name, s.description, s.address, s.m
         s.pro_until,
         EXISTS (SELECT 1 FROM server_payout_accounts pa WHERE pa.server_id = s.id AND pa.support_enabled) AS supportable,
         s.whitelist_form_url,
-        (s.page <> '{}'::JSONB) AS has_page
+        (s.page <> '{}'::JSONB) AS has_page,
+        s.central_partner
    FROM servers s
    LEFT JOIN server_channels sc ON sc.server_id = s.id AND sc.channel = 'stable'
    LEFT JOIN pack_versions pv ON pv.id = sc.version_id";
@@ -124,6 +126,7 @@ impl ServerRow {
                 whitelist_form_url: self.whitelist_form_url,
                 // Página personalizada só aparece com o PRO ativo (fica guardada quando vence).
                 has_page: pro && self.has_page,
+                central_partner: self.central_partner,
             },
         }
     }
@@ -565,6 +568,28 @@ pub async fn set_featured(
         .await?;
     audit(&state.pool, Some(id), staff.map(|s| s.id), "server.featured", json!({ "until": input.until })).await?;
     Ok(Json(json!({ "slug": slug, "featured_until": input.until })))
+}
+
+#[derive(Deserialize)]
+pub struct CentralInput {
+    pub central: bool,
+}
+
+/// Programa "SMP da Central": selo no card do servidor e no perfil da equipe dele.
+pub async fn set_central(
+    State(state): State<AppState>,
+    Staff(staff): Staff,
+    Path(slug): Path<String>,
+    Json(input): Json<CentralInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let id = server_id_by_slug(&state.pool, &slug).await?;
+    sqlx::query("UPDATE servers SET central_partner = $2 WHERE id = $1")
+        .bind(id)
+        .bind(input.central)
+        .execute(&state.pool)
+        .await?;
+    audit(&state.pool, Some(id), staff.map(|s| s.id), "server.central", json!({ "central": input.central })).await?;
+    Ok(Json(json!({ "slug": slug, "central_partner": input.central })))
 }
 
 #[derive(Serialize, sqlx::FromRow)]

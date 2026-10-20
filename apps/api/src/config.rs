@@ -84,6 +84,11 @@ pub struct Config {
     pub staff_discord_ids: Vec<String>,
     /// Convite da comunidade no Discord, mostrado para quem ainda não foi liberado.
     pub discord_invite: String,
+    /// Servidor da Central SMP's no Discord (parceira). Com ele, o login do Discord pede o
+    /// escopo `guilds` e confere se a pessoa é membro (selo "Membro da Central").
+    pub central_guild_id: Option<String>,
+    /// Convite da Central SMP's, mostrado no site e no launcher.
+    pub central_invite: Option<String>,
     // ---------------------------------------------------------------- monetização
     /// Chave AES-256 (base64) que criptografa segredos guardados no banco, como os
     /// tokens OAuth do Mercado Pago dos donos de servidor. Fica só na VPS.
@@ -314,6 +319,10 @@ impl Config {
                 })
                 .unwrap_or_default(),
             discord_invite: var("CONEXAO_DISCORD_INVITE").unwrap_or_else(|| "https://discord.gg/conexaosmps".into()),
+            central_guild_id: var("CONEXAO_CENTRAL_GUILD_ID")
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty() && v.len() <= 24 && v.bytes().all(|b| b.is_ascii_digit())),
+            central_invite: var("CONEXAO_CENTRAL_INVITE").filter(|v| v.starts_with("https://")),
             discord_client_id: var("CONEXAO_DISCORD_CLIENT_ID"),
             discord_client_secret: var("CONEXAO_DISCORD_CLIENT_SECRET"),
             discord_redirect_uri,

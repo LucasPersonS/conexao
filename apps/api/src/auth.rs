@@ -56,12 +56,15 @@ pub struct User {
     pub account_type: String,
     /// Liberado na lista de espera (ou conta de antes dela).
     pub launcher_access: bool,
+    /// Membro verificado da Central SMP's (comunidade parceira): selo "Membro da Central".
+    pub central_member: bool,
 }
 
 pub const ACCOUNT_OFFLINE: &str = "offline";
 
 /// Colunas da tabela `users` lidas por `query_as::<_, User>`.
-pub const USER_COLUMNS: &str = "id, minecraft_uuid, minecraft_name, is_staff, account_type, launcher_access";
+pub const USER_COLUMNS: &str =
+    "id, minecraft_uuid, minecraft_name, is_staff, account_type, launcher_access, central_member";
 
 impl User {
     pub fn is_offline(&self) -> bool {

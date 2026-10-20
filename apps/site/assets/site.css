@@ -342,3 +342,56 @@ p { margin: 0; }
   .comunidade { padding: 64px 0; }
   .faixa-in > span:not(.faixa-ponto) { display: none; }
 }
+
+/* ------------------------------------------------------------------ parceria Central SMP's */
+/* Azul do logo da Central, usado só nos sinais da parceria (o resto do site segue verde-lima). */
+:root { --central: #3b9ae8; --central-hi: #7cc0f7; --central-soft: rgba(59, 154, 232, .14); --central-line: rgba(124, 192, 247, .45); }
+.faixa-sep { opacity: .5; }
+.faixa-central { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 700; text-decoration: none; padding: 2px 10px 2px 4px; border-radius: 999px; background: rgba(10, 15, 17, .12); }
+.faixa-central img { width: 18px; height: 18px; border-radius: 5px; }
+.faixa-central:hover { background: rgba(10, 15, 17, .2); }
+.marca-parceira { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text); padding: 4px 10px 4px 4px; border-radius: 12px; border: 1px solid var(--central-line); background: var(--central-soft); }
+.marca-parceira:hover { border-color: var(--central-hi); }
+.marca-parceira .x { color: var(--text-faint); font-weight: 700; padding-left: 4px; }
+.marca-parceira img { width: 30px; height: 30px; border-radius: 8px; }
+.marca-parceira-nome { font-family: var(--font-display); font-weight: 700; font-size: 15px; white-space: nowrap; }
+.rotulo-parceria { color: var(--text-faint); text-transform: none; letter-spacing: 0; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; }
+.rotulo-parceria a { color: var(--central-hi); text-decoration: none; }
+.via-central { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--central-line); background: var(--central-soft); font-size: 14px; color: var(--text-dim); }
+.via-central[hidden] { display: none; }
+.via-central { margin-bottom: 16px; }
+.menu a { white-space: nowrap; }
+.via-central img { width: 36px; height: 36px; border-radius: 9px; flex: none; }
+.via-central strong { color: var(--text); }
+.selo-central { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 5px 12px 5px 6px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #eaf4ff; background: rgba(46, 140, 230, .22); border: 1px solid var(--central-line); }
+.selo-central[hidden] { display: none; }
+.selo-central img { width: 20px; height: 20px; border-radius: 6px; }
+
+.central { padding: 88px 0; border-top: 1px solid var(--line); background:
+  radial-gradient(700px 360px at 15% 30%, rgba(59, 154, 232, .16), transparent 70%),
+  radial-gradient(600px 320px at 85% 70%, rgba(183, 254, 0, .08), transparent 70%); }
+.central-in { display: grid; grid-template-columns: .9fr 1.3fr; gap: 56px; align-items: center; }
+.central-logos { display: flex; align-items: center; justify-content: center; gap: 22px; padding: 40px 20px; border-radius: 24px; border: 1px solid var(--line-strong); background: var(--card); position: relative; overflow: hidden; }
+.central-logos::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(124, 192, 247, .06) 1px, transparent 1px), linear-gradient(90deg, rgba(124, 192, 247, .06) 1px, transparent 1px); background-size: 22px 22px; }
+.central-logo { position: relative; width: 132px; height: 132px; border-radius: 30px; overflow: hidden; border: 3px solid var(--central); box-shadow: 0 0 0 6px var(--central-soft), 0 20px 50px rgba(59, 154, 232, .25); background: #fff; }
+.central-logo.conexao { border-color: var(--lime); box-shadow: 0 0 0 6px var(--lime-soft), 0 20px 50px rgba(183, 254, 0, .18); background: var(--bg); display: grid; place-items: center; }
+.central-logo img { width: 100%; height: 100%; object-fit: cover; }
+.central-logo.conexao img { width: 76%; height: 76%; object-fit: contain; }
+.central-x { position: relative; font-family: var(--font-display); font-size: 44px; font-weight: 700; color: var(--text-faint); }
+.central h2 .x { color: var(--central-hi); }
+.rotulo-azul { color: var(--central-hi); }
+.rotulo-azul .pix { background: var(--central-hi); box-shadow: 4px -4px 0 -2px var(--central-hi); }
+.central-lead { color: var(--text-dim); font-size: 18px; max-width: 620px; }
+.checks-azul li::before { background-color: var(--central); }
+.btn-central { background: var(--central); color: #fff; box-shadow: 0 0 0 1px rgba(124, 192, 247, .5), 0 10px 30px rgba(59, 154, 232, .3); }
+.btn-central:hover { background: #4fa8f0; }
+.central-nota { margin-top: 16px; font-size: 13px; color: var(--text-faint); }
+.rodape-x { color: var(--text-faint); }
+.rodape-parceira { color: var(--text-dim); font-size: 15px; }
+@media (max-width: 1180px) { .marca-parceira-nome { display: none; } }
+@media (max-width: 900px) {
+  .central-in { grid-template-columns: 1fr; gap: 32px; }
+  .central-logo { width: 104px; height: 104px; }
+  .marca-parceira-nome { display: none; }
+}
+@media (max-width: 560px) { .marca-parceira { display: none; } .faixa-sep { display: none; } }

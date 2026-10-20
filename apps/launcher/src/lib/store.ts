@@ -14,6 +14,10 @@ export const store = reactive({
   /** Abre a lista já filtrada (ex.: "Favoritos" na home). */
   browseFavorites: false,
   browseTag: null as string | null,
+  /** Abre a lista só com os SMPs da Central (parceria Central SMP's). */
+  browseCentral: false,
+  /** Selos do perfil de quem está logado (ex.: "Membro da Central"). */
+  myBadges: [] as { id: string; label: string }[],
   /** Aviso rápido no rodapé (ex.: convite para servidor que não está na lista). */
   toast: null as string | null,
   /** Conta logada (avatar no campo de comentário etc.). */
@@ -52,9 +56,10 @@ export async function loadServers() {
   }
 }
 
-export function go(view: Exclude<View, 'server'>, options: { favorites?: boolean; tag?: string | null } = {}) {
+export function go(view: Exclude<View, 'server'>, options: { favorites?: boolean; tag?: string | null; central?: boolean } = {}) {
   store.browseFavorites = options.favorites ?? false
   store.browseTag = options.tag ?? null
+  store.browseCentral = options.central ?? false
   store.view = view
 }
 
@@ -63,6 +68,12 @@ export function openServer(slug: string) {
   store.slug = slug
   store.view = 'server'
 }
+
+/** Servidores do programa "SMP da Central" (parceria Central SMP's). */
+export const centralServers = computed(() => store.servers.filter((s) => s.central_partner))
+
+/** Página da parceria no site: o mesmo link `?ref=central` divulgado na Central SMP's. */
+export const CENTRAL_PAGE = 'https://conexaosmps.com.br/?ref=central#central'
 
 export function findServer(slug: string | null): ServerSummary | null {
   return store.servers.find((s) => s.slug === slug) ?? null

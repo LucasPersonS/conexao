@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import centralLogo from '../assets/central.webp'
 import Icon from '../components/Icon.vue'
 import PlayButton from '../components/PlayButton.vue'
 import SponsorBanner from '../components/SponsorBanner.vue'
@@ -10,7 +12,7 @@ import UpcomingEvents from '../components/UpcomingEvents.vue'
 import type { ServerSummary } from '../lib/api'
 import { bgImage, formatNumber, timeAgo } from '../lib/format'
 import { prefs } from '../lib/prefs'
-import { allTags, findServer, go, openServer, sortServers, store, totalPlayers } from '../lib/store'
+import { allTags, CENTRAL_PAGE, centralServers, findServer, go, openServer, sortServers, store, totalPlayers } from '../lib/store'
 
 const recent = computed(() =>
   prefs.recent
@@ -30,6 +32,8 @@ const spotlight = computed(() => {
   return [...featured, ...rest].slice(0, 8)
 })
 const popular = computed(() => sortServers(store.servers, 'players').slice(0, 4))
+const central = computed(() => sortServers(centralServers.value, 'players'))
+const centralPlayers = computed(() => central.value.reduce((n, s) => n + (s.status.online ? s.status.players_online : 0), 0))
 </script>
 
 <template>
@@ -95,6 +99,36 @@ const popular = computed(() => sortServers(store.servers, 'players').slice(0, 4)
       <Spotlight :servers="spotlight" @open="openServer" />
     </template>
 
+    <!-- Parceria Central SMP's: comunidade parceira oficial, com os SMPs do programa. -->
+    <section class="central-strip">
+      <div class="central-brand">
+        <img :src="centralLogo" alt="Central SMP's" class="central-logo" />
+        <div>
+          <span class="central-eyebrow">Comunidade parceira oficial</span>
+          <h3>SMPs da Central</h3>
+          <p>
+            A Central SMP's é onde os SMPs se divulgam e conversam entre si.
+            <template v-if="central.length">
+              {{ central.length }} {{ central.length === 1 ? 'servidor' : 'servidores' }} do programa no Conexão ·
+              {{ formatNumber(centralPlayers) }} jogando agora
+            </template>
+            <template v-else>Os primeiros SMPs do programa chegam em breve.</template>
+          </p>
+        </div>
+      </div>
+      <div v-if="central.length" class="central-servers">
+        <button v-for="s in central.slice(0, 5)" :key="s.slug" class="central-server" :title="s.name" @click="openServer(s.slug)">
+          <ServerIcon :name="s.name" :url="s.icon_url" :size="40" />
+          <span class="central-name">{{ s.name }}</span>
+          <small><span class="dot" :class="{ on: s.status.online }" />{{ s.status.online ? formatNumber(s.status.players_online) : 'off' }}</small>
+        </button>
+      </div>
+      <div class="central-actions">
+        <button v-if="central.length" class="btn central-btn" @click="go('browse', { central: true })">Ver SMPs da Central</button>
+        <button class="btn ghost" @click="openUrl(CENTRAL_PAGE)">Conhecer a parceria</button>
+      </div>
+    </section>
+
     <SponsorBanner placement="home" variant="wide" class="sponsor-strip" />
 
     <UpcomingEvents />
@@ -125,6 +159,133 @@ const popular = computed(() => sortServers(store.servers, 'players').slice(0, 4)
 </template>
 
 <style scoped>
+.central-strip {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(124, 192, 247, 0.4);
+  background:
+    linear-gradient(rgba(124, 192, 247, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 192, 247, 0.06) 1px, transparent 1px),
+    radial-gradient(520px 200px at 0% 50%, rgba(59, 154, 232, 0.24), transparent 70%),
+    var(--bg-card);
+  background-size: 22px 22px, 22px 22px, auto, auto;
+  overflow: hidden;
+}
+
+.central-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.central-logo {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: #fff;
+  border: 2px solid #3b9ae8;
+  box-shadow: 0 0 0 4px rgba(59, 154, 232, 0.18), 0 10px 26px rgba(59, 154, 232, 0.3);
+}
+
+.central-eyebrow {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7cc0f7;
+}
+
+.central-brand h3 {
+  margin: 2px 0;
+  font-size: 20px;
+}
+
+.central-brand p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.central-servers {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.central-server {
+  flex: 1 1 0;
+  min-width: 82px;
+  max-width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(var(--shade), 0.5);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.central-server:hover {
+  border-color: #7cc0f7;
+  transform: translateY(-2px);
+}
+
+.central-name {
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.central-server small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.central-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.central-btn {
+  background: #3b9ae8;
+  border-color: #7cc0f7;
+  color: #fff;
+}
+
+.central-btn:hover {
+  background: #4fa8f0;
+}
+
+@media (max-width: 1100px) {
+  .central-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .central-actions {
+    flex-direction: row;
+  }
+}
+
 .sponsor-strip {
   margin-top: 8px;
 }

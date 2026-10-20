@@ -37,6 +37,38 @@
     history.replaceState(null, '', location.pathname + location.hash);
   }
 
+  // Link de origem (?ref=central): guardado no navegador e repassado ao login do Discord,
+  // para a API registrar de onde a pessoa veio (e conferir se é membro da Central).
+  var REF_KEY = 'conexao_ref';
+  var refAtual = null;
+  try { refAtual = localStorage.getItem(REF_KEY); } catch (e) { /* sem storage */ }
+  var refUrl = (params.get('ref') || '').toLowerCase();
+  if (/^[a-z0-9-]{1,32}$/.test(refUrl)) {
+    refAtual = refUrl;
+    try { localStorage.setItem(REF_KEY, refUrl); } catch (e) { /* sem storage */ }
+    params.delete('ref');
+    var resto = params.toString();
+    history.replaceState(null, '', location.pathname + (resto ? '?' + resto : '') + location.hash);
+  }
+  $all('[data-login]').forEach(function (a) {
+    if (refAtual) a.setAttribute('href', '/v1/waitlist/discord?ref=' + encodeURIComponent(refAtual));
+  });
+
+  function mostrarCentral(me) {
+    var veio = (me && me.ref === 'central') || refAtual === 'central';
+    var membro = !!(me && me.central);
+    $all('[data-via-central]').forEach(function (el) { el.hidden = !veio || membro || !!(me && me.can_download); });
+    $all('[data-via-central-texto]').forEach(function (el) {
+      el.textContent = me && me.discord
+        ? 'Não encontramos a sua conta no servidor da Central. Entre na Central e faça login de novo para entrar no lote prioritário.'
+        : 'Entre com o Discord da sua conta na Central: membros verificados entram no lote prioritário.';
+    });
+    $all('[data-selo-central]').forEach(function (el) { el.hidden = !membro; });
+    $all('[data-central-convite]').forEach(function (el) {
+      if (me && me.central_invite) { el.setAttribute('href', me.central_invite); el.hidden = false; }
+    });
+  }
+
   function preencher(me) {
     var d = me.discord;
     $all('[data-nome]').forEach(function (el) { el.textContent = d ? d.name : ''; });
@@ -58,6 +90,7 @@
   function render(me) {
     atual = me;
     preencher(me);
+    mostrarCentral(me);
     if (topoCta) {
       topoCta.textContent = me.can_download ? 'Baixar' : 'Entrar na lista';
       topoCta.setAttribute('href', me.can_download ? '/baixar' : '#lista');
@@ -94,6 +127,7 @@
   function carregar() {
     return api('GET').then(render).catch(function () {
       mostrar('entrar');
+      mostrarCentral(null);
       mostrarErro('A lista de espera está fora do ar agora. Tente de novo em instantes.');
     });
   }

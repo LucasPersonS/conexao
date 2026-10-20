@@ -40,6 +40,8 @@ export interface ServerSummary {
   whitelist_form_url?: string | null
   /** Página personalizada ativa (PRO). */
   has_page?: boolean
+  /** Programa "SMP da Central" (parceria com a Central SMP's). */
+  central_partner?: boolean
 }
 
 export type WhitelistStatus = 'pending' | 'approved' | 'rejected' | 'banned'

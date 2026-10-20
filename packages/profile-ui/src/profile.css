@@ -408,6 +408,27 @@
   border: 1px solid color-mix(in srgb, var(--cp-accent) 55%, transparent);
 }
 
+/* Parceria Central SMP's: o azul do logo da Central, igual em qualquer tema. */
+.cp-badge[data-badge='central'],
+.cp-badge[data-badge='smp-central'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #eaf4ff;
+  background: rgba(46, 140, 230, 0.28);
+  border-color: rgba(96, 172, 245, 0.7);
+}
+
+.cp-badge[data-badge='central']::before,
+.cp-badge[data-badge='smp-central']::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ea8f2;
+  box-shadow: 0 0 6px #4ea8f2;
+}
+
 .cp-bio {
   margin: 12px 0 0;
   font-size: 14px;

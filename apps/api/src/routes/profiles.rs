@@ -208,11 +208,12 @@ struct ProfileRow {
     background_status: Option<String>,
     profile_banned_at: Option<DateTime<Utc>>,
     profile_ban_reason: Option<String>,
+    central_member: bool,
 }
 
 const PROFILE_SELECT: &str = "SELECT u.id, u.minecraft_uuid, u.minecraft_name, u.is_staff, u.created_at,
         p.display_name, p.pronouns, p.bio, p.links, p.theme, p.discord_visibility, p.background_url, p.background_status,
-        u.profile_banned_at, u.profile_ban_reason
+        u.profile_banned_at, u.profile_ban_reason, u.central_member
    FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id";
 
 #[derive(Serialize)]
@@ -255,17 +256,24 @@ async fn badges(state: &AppState, row: &ProfileRow) -> ApiResult<Vec<Badge>> {
     if row.is_staff {
         badges.push(Badge { id: "equipe", label: "Equipe Conexão".into() });
     }
-    let roles: Vec<String> = sqlx::query_scalar(
-        "SELECT DISTINCT m.role FROM server_members m JOIN servers s ON s.id = m.server_id
+    let roles: Vec<(String, bool)> = sqlx::query_as(
+        "SELECT DISTINCT m.role, s.central_partner FROM server_members m JOIN servers s ON s.id = m.server_id
           WHERE m.user_id = $1 AND s.approval = 'approved'",
     )
     .bind(row.id)
     .fetch_all(&state.pool)
     .await?;
-    if roles.iter().any(|r| r == "owner") {
+    if roles.iter().any(|(r, _)| r == "owner") {
         badges.push(Badge { id: "parceiro", label: "Dono de servidor".into() });
     } else if !roles.is_empty() {
         badges.push(Badge { id: "staff", label: "Staff de servidor".into() });
+    }
+    // Parceria Central SMP's: equipe de um SMP do programa e membros verificados da Central.
+    if roles.iter().any(|(_, central)| *central) {
+        badges.push(Badge { id: "smp-central", label: "SMP da Central".into() });
+    }
+    if row.central_member {
+        badges.push(Badge { id: "central", label: "Membro da Central".into() });
     }
     if is_premium(state, row.id).await? {
         badges.push(Badge { id: "plus", label: "Conexão+".into() });
@@ -835,7 +843,11 @@ pub fn render_card(profile: &PublicProfile) -> String {
         escape(&name)
     };
     let pronouns = profile.pronouns.as_ref().map(|p| format!("<span>· {}</span>", escape(p))).unwrap_or_default();
-    let badges: String = profile.badges.iter().map(|b| format!(r#"<span class="cp-badge">{}</span>"#, escape(&b.label))).collect();
+    let badges: String = profile
+        .badges
+        .iter()
+        .map(|b| format!(r#"<span class="cp-badge" data-badge="{}">{}</span>"#, b.id, escape(&b.label)))
+        .collect();
     let bio = profile.bio.as_ref().map(|b| format!(r#"<p class="cp-bio">{}</p>"#, escape(b))).unwrap_or_default();
     let links: String = profile
         .links

@@ -11,6 +11,8 @@ mod billing;
 mod billing_db_tests;
 #[cfg(test)]
 mod page_db_tests;
+#[cfg(test)]
+mod central_db_tests;
 mod cleanup;
 mod config;
 mod crypto;

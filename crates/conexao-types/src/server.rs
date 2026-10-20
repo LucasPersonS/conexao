@@ -72,6 +72,9 @@ pub struct ServerSummary {
     /// Página personalizada ativa (PRO): o launcher busca `/v1/servers/{slug}/page`.
     #[serde(default)]
     pub has_page: bool,
+    /// Programa "SMP da Central" (parceria com a Central SMP's): selo no card.
+    #[serde(default)]
+    pub central_partner: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

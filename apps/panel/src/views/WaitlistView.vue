@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { api, formatDate, message, type WaitlistEntry, type WaitlistList, type WaitlistStatus } from '../lib/api'
+import centralLogo from '../assets/central.webp'
 
 const status = ref<WaitlistStatus>('pending')
 const list = ref<WaitlistList | null>(null)
@@ -10,6 +11,9 @@ const busy = ref(false)
 const search = ref('')
 const batch = ref(25)
 const manualNick = ref('')
+/** Só membros verificados da Central SMP's (lote da parceria). */
+const onlyCentral = ref(false)
+const centralBatch = ref(25)
 
 const tabs: { id: WaitlistStatus; label: string; count: () => number }[] = [
   { id: 'pending', label: 'Na fila', count: () => list.value?.pending ?? 0 },
@@ -20,7 +24,7 @@ const tabs: { id: WaitlistStatus; label: string; count: () => number }[] = [
 async function load() {
   error.value = null
   try {
-    list.value = await api.waitlist(status.value)
+    list.value = await api.waitlist(status.value, onlyCentral.value)
   } catch (e) {
     error.value = message(e)
   }
@@ -58,6 +62,15 @@ function approveNext() {
   )
 }
 
+function approveCentral() {
+  const count = Math.max(1, Math.min(500, Math.floor(centralBatch.value || 0)))
+  if (!window.confirm(`Liberar os próximos ${count} membros verificados da Central SMP's?`)) return
+  run(
+    () => api.approveNextWaitlist(count, true),
+    (r) => `${(r as { approved: number }).approved} membros da Central liberados. Avise no Discord da Central!`,
+  )
+}
+
 function manual() {
   const nick = manualNick.value.trim()
   if (!nick) return
@@ -83,7 +96,7 @@ const filtered = computed(() => {
   return entries.filter((e) => [e.minecraft_name, e.discord_name, e.discord_id ?? ''].some((v) => v.toLowerCase().includes(q)))
 })
 
-watch(status, load)
+watch([status, onlyCentral], load)
 onMounted(load)
 </script>
 
@@ -108,6 +121,16 @@ onMounted(load)
         <button class="btn btn-primary" :disabled="busy || !list?.pending" @click="approveNext">Liberar os próximos</button>
       </div>
     </div>
+    <div v-if="list?.central_enabled" class="tool central-tool">
+      <h2><img :src="centralLogo" alt="" class="central-ico" /> Lote da Central SMP's</h2>
+      <p class="muted small">
+        {{ list.central_pending ?? 0 }} membros verificados da Central na fila. Libera só eles, por ordem de chegada.
+      </p>
+      <div class="row">
+        <input v-model.number="centralBatch" class="input num" type="number" min="1" max="500" />
+        <button class="btn btn-central" :disabled="busy || !list?.central_pending" @click="approveCentral">Liberar lote da Central</button>
+      </div>
+    </div>
     <div class="tool">
       <h2>Liberar pelo nick</h2>
       <p class="muted small">Para quem não passou pelo site: conta que já existe no Conexão ou conta original.</p>
@@ -122,6 +145,9 @@ onMounted(load)
     <button v-for="t in tabs" :key="t.id" :class="{ active: status === t.id }" @click="status = t.id">
       {{ t.label }} <span class="count">{{ t.count() }}</span>
     </button>
+    <label v-if="list?.central_enabled" class="central-filter">
+      <input v-model="onlyCentral" type="checkbox" /> Só membros da Central
+    </label>
     <input v-model="search" class="input search" placeholder="Buscar nick ou Discord" />
   </nav>
 
@@ -157,6 +183,10 @@ onMounted(load)
               <span :class="['badge', e.account_type === 'microsoft' ? 'good' : 'warn']">
                 {{ e.account_type === 'microsoft' ? 'Original' : 'Não original' }}
               </span>
+              <span v-if="e.central_member" class="badge central" title="Membro verificado da Central SMP's">
+                <img :src="centralLogo" alt="" /> Central
+              </span>
+              <span v-else-if="e.ref" class="badge ref" :title="`Entrou pelo link ?ref=${e.ref} (não verificado)`">via {{ e.ref }}</span>
             </div>
           </td>
           <td class="muted small">
@@ -181,6 +211,50 @@ onMounted(load)
 </template>
 
 <style scoped>
+.central-tool h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.central-ico {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #fff;
+}
+.btn-central {
+  background: #3b9ae8;
+  border-color: #7cc0f7;
+  color: #fff;
+}
+.central-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.badge.central {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  background: rgba(46, 140, 230, 0.2);
+  border: 1px solid rgba(124, 192, 247, 0.6);
+  color: #cfe7fd;
+}
+.badge.central img {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+}
+.badge.ref {
+  margin-left: 4px;
+  color: var(--text-dim);
+}
 .lead {
   margin: 6px 0 20px;
   max-width: 760px;

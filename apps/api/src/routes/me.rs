@@ -31,7 +31,8 @@ pub async fn login_minecraft(
         .await?;
     waitlist::require_launcher_access(&state, existing.as_ref(), Some(uuid), None).await?;
     let user = upsert_user(&state.pool, uuid, &name, true).await?;
-    let mut user = waitlist::grant(&state, user).await?;
+    let user = waitlist::grant(&state, user).await?;
+    let mut user = waitlist::adopt_origin(&state, user).await?;
     if !user.is_staff && state.config.staff_uuids.contains(&uuid) {
         sqlx::query("UPDATE users SET is_staff = TRUE WHERE id = $1").bind(user.id).execute(&state.pool).await?;
         user.is_staff = true;

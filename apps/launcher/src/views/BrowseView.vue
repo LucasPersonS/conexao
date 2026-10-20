@@ -5,19 +5,22 @@ import SelectMenu from '../components/SelectMenu.vue'
 import ServerCard from '../components/ServerCard.vue'
 import { formatNumber } from '../lib/format'
 import { prefs } from '../lib/prefs'
-import { allTags, loadServers, openServer, sortServers, store, totalPlayers, type SortMode } from '../lib/store'
+import { allTags, centralServers, loadServers, openServer, sortServers, store, totalPlayers, type SortMode } from '../lib/store'
+import centralLogo from '../assets/central.webp'
 
 const search = ref('')
 const tag = ref<string | null>(store.browseTag)
 const sort = ref<SortMode>('players')
 const onlyFavorites = ref(store.browseFavorites)
 const hideOffline = ref(false)
+const onlyCentral = ref(store.browseCentral)
 
 watch(
-  () => [store.browseTag, store.browseFavorites] as const,
-  ([t, f]) => {
+  () => [store.browseTag, store.browseFavorites, store.browseCentral] as const,
+  ([t, f, c]) => {
     tag.value = t
     onlyFavorites.value = f
+    onlyCentral.value = c
   },
 )
 
@@ -38,17 +41,19 @@ const results = computed(() => {
       (!q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || s.tags.some((t) => t.toLowerCase().includes(q))) &&
       (!tag.value || s.tags.includes(tag.value)) &&
       (!onlyFavorites.value || prefs.favorites.includes(s.slug)) &&
+      (!onlyCentral.value || s.central_partner) &&
       (!hideOffline.value || s.status.online),
   )
   return sortServers(list, sort.value)
 })
 
-const filtering = computed(() => !!search.value || !!tag.value || onlyFavorites.value || hideOffline.value)
+const filtering = computed(() => !!search.value || !!tag.value || onlyFavorites.value || hideOffline.value || onlyCentral.value)
 function clear() {
   search.value = ''
   tag.value = null
   onlyFavorites.value = false
   hideOffline.value = false
+  onlyCentral.value = false
 }
 </script>
 
@@ -74,6 +79,16 @@ function clear() {
       </button>
       <button class="toggle" :class="{ on: hideOffline }" :aria-pressed="hideOffline" @click="hideOffline = !hideOffline">
         Só online
+      </button>
+      <button
+        v-if="centralServers.length"
+        class="toggle central"
+        :class="{ on: onlyCentral }"
+        :aria-pressed="onlyCentral"
+        title="Servidores do programa SMP da Central"
+        @click="onlyCentral = !onlyCentral"
+      >
+        <img :src="centralLogo" alt="" /> SMPs da Central
       </button>
     </div>
 
@@ -219,5 +234,21 @@ h2 {
 .link {
   color: var(--lime);
   font-weight: 600;
+}
+.toggle.central {
+  gap: 7px;
+}
+
+.toggle.central img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.toggle.central.on {
+  background: rgba(46, 140, 230, 0.9);
+  border-color: #7cc0f7;
+  color: #fff;
 }
 </style>

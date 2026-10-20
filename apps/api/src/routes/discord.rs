@@ -49,7 +49,7 @@ pub async fn config(State(state): State<AppState>) -> Json<DiscordConfig> {
         enabled: discord_app(&state).is_ok(),
         client_id: state.config.discord_client_id.clone(),
         redirect_uri: state.config.discord_redirect_uri.clone(),
-        scope: "identify",
+        scope: oauth_scope(&state),
     })
 }
 
@@ -101,13 +101,31 @@ pub(crate) struct DiscordUser {
     pub avatar: Option<String>,
 }
 
-async fn discord_user(state: &AppState, code: &str) -> ApiResult<DiscordUser> {
-    discord_user_with(state, code, &state.config.discord_redirect_uri).await
+/// Escopos pedidos no login do Discord. Com a Central configurada, pede também `guilds`
+/// (só a lista de servidores em que a pessoa está) para conferir se é membro da Central.
+pub(crate) fn oauth_scope(state: &AppState) -> &'static str {
+    if state.config.central_guild_id.is_some() { "identify guilds" } else { "identify" }
 }
 
-/// Troca o `code` pelo usuário do Discord. `redirect_uri` precisa ser o mesmo usado na autorização
-/// (o do launcher ou o do site, na lista de espera).
-pub(crate) async fn discord_user_with(state: &AppState, code: &str, redirect_uri: &str) -> ApiResult<DiscordUser> {
+/// Quem é no Discord e se é membro verificado da Central SMP's.
+pub(crate) struct DiscordIdentity {
+    pub user: DiscordUser,
+    /// `Some(true/false)` = conferido; `None` = Central não configurada ou o Discord não respondeu.
+    pub central_member: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct DiscordGuild {
+    id: String,
+}
+
+async fn discord_identity(state: &AppState, code: &str) -> ApiResult<DiscordIdentity> {
+    discord_identity_with(state, code, &state.config.discord_redirect_uri).await
+}
+
+/// Troca o `code` pelo usuário do Discord (e confere a Central). `redirect_uri` precisa ser o
+/// mesmo usado na autorização (o do launcher ou o do site, na lista de espera).
+pub(crate) async fn discord_identity_with(state: &AppState, code: &str, redirect_uri: &str) -> ApiResult<DiscordIdentity> {
     let (client_id, client_secret) = discord_app(state)?;
     let response = state
         .http
@@ -131,7 +149,7 @@ pub(crate) async fn discord_user_with(state: &AppState, code: &str, redirect_uri
         .json()
         .await
         .map_err(|e| ApiError::Internal(e.into()))?;
-    state
+    let user: DiscordUser = state
         .http
         .get(format!("{}/users/@me", state.config.discord_api_url))
         .bearer_auth(&token.access_token)
@@ -141,13 +159,46 @@ pub(crate) async fn discord_user_with(state: &AppState, code: &str, redirect_uri
         .map_err(|e| ApiError::Internal(e.into()))?
         .json()
         .await
-        .map_err(|e| ApiError::Internal(e.into()))
+        .map_err(|e| ApiError::Internal(e.into()))?;
+    let central_member = match &state.config.central_guild_id {
+        Some(guild) => is_member_of(state, &token.access_token, guild).await,
+        None => None,
+    };
+    Ok(DiscordIdentity { user, central_member })
+}
+
+/// Confere na lista de servidores da pessoa (escopo `guilds`). Falha = `None`: o login
+/// continua e o selo fica como estava.
+async fn is_member_of(state: &AppState, access_token: &str, guild_id: &str) -> Option<bool> {
+    let response = state
+        .http
+        .get(format!("{}/users/@me/guilds?limit=200", state.config.discord_api_url))
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status);
+    match response {
+        Ok(response) => match response.json::<Vec<DiscordGuild>>().await {
+            Ok(guilds) => Some(guilds.iter().any(|g| g.id == guild_id)),
+            Err(error) => {
+                tracing::warn!("Discord: lista de servidores ilegível: {error}");
+                None
+            }
+        },
+        Err(error) => {
+            tracing::warn!("Discord: não consegui ler os servidores (escopo guilds): {error}");
+            None
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SignupClaims {
     discord_id: String,
     discord_name: String,
+    /// Membro verificado da Central no momento do login.
+    #[serde(default)]
+    central: Option<bool>,
     exp: i64,
 }
 
@@ -185,7 +236,8 @@ pub async fn login(
     if body.code.is_empty() || body.code.len() > 200 {
         return Err(ApiError::bad("Código do Discord inválido."));
     }
-    let discord = discord_user(&state, &body.code).await?;
+    let identity = discord_identity(&state, &body.code).await?;
+    let discord = identity.user;
     let existing = sqlx::query_as::<_, User>(&format!("SELECT {USER_COLUMNS} FROM users WHERE discord_id = $1"))
         .bind(&discord.id)
         .fetch_optional(&state.pool)
@@ -197,6 +249,7 @@ pub async fn login(
             ));
         }
         waitlist::require_launcher_access(&state, Some(&user), None, Some(&discord.id)).await?;
+        let user = waitlist::mark_central(&state, user, identity.central_member).await?;
         let session = new_session(&state, &user).await?;
         let token = issue_token(&state, &user)?;
         return Ok(Json(DiscordLoginResponse::Ok(OfflineLogin { token, session, user })));
@@ -206,6 +259,7 @@ pub async fn login(
     let claims = SignupClaims {
         discord_id: discord.id.clone(),
         discord_name: discord.global_name.clone().unwrap_or_else(|| discord.username.clone()),
+        central: identity.central_member,
         exp: Utc::now().timestamp() + SIGNUP_MINUTES * 60,
     };
     let signup_token = jsonwebtoken::encode(&Header::default(), &claims, &EncodingKey::from_secret(&signup_secret(&state)))
@@ -278,6 +332,8 @@ pub async fn register(
     })?;
     audit(&state.pool, None, Some(user.id), "account.offline_created", serde_json::json!({ "nick": nick })).await?;
     let user = waitlist::grant(&state, user).await?;
+    let user = waitlist::mark_central(&state, user, claims.central).await?;
+    let user = waitlist::adopt_origin(&state, user).await?;
     let session = new_session(&state, &user).await?;
     let token = issue_token(&state, &user)?;
     Ok(Json(OfflineLogin { token, session, user }))

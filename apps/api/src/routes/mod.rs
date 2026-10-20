@@ -105,9 +105,11 @@ pub fn router(state: AppState) -> Router {
             post(images::upload).layer(DefaultBodyLimit::max(images::MAX_BANNER + 1024)),
         )
         .route("/servers/{slug}/page", get(page::get).put(page::put))
+        .route("/servers/{slug}/page/check", post(page::check))
+        .route("/servers/{slug}/page/media/{id}", delete(page::media_delete))
         .route(
             "/servers/{slug}/page/media",
-            post(page::upload).layer(DefaultBodyLimit::max(page::MAX_GIF_BYTES + 1024)),
+            get(page::media_list).post(page::upload).layer(DefaultBodyLimit::max(page::MAX_GIF_BYTES + 1024)),
         )
         .route("/servers/{slug}/posts", get(posts::list).post(posts::create))
         .route("/servers/{slug}/posts/{id}", put(posts::update).delete(posts::remove))
@@ -168,6 +170,7 @@ pub fn router(state: AppState) -> Router {
         .route("/staff/servers", get(servers::staff_list))
         .route("/staff/servers/{slug}/approval", post(servers::set_approval))
         .route("/staff/servers/{slug}/featured", post(servers::set_featured))
+        .route("/staff/servers/{slug}/central", post(servers::set_central))
         .route("/staff/storage", get(storage_admin::overview))
         .route("/staff/storage/cleanup", post(storage_admin::run_cleanup))
         .route("/staff/storage/servers/{slug}", get(storage_admin::server_detail))

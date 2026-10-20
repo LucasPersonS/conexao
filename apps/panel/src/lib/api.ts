@@ -54,6 +54,8 @@ export interface Server {
   whitelist_form_url?: string | null
   /** Página personalizada visível no launcher (PRO ativo e página preenchida). */
   has_page?: boolean
+  /** Programa "SMP da Central" (parceria Central SMP's). */
+  central_partner?: boolean
 }
 
 // ------------------------------------------------------- página personalizada (PRO)
@@ -83,6 +85,18 @@ export interface PageState {
   page: PageData
   updated_at: string | null
   usage?: { uploads_24h: number; bytes_24h: number; max_uploads_24h: number; max_bytes_24h: number }
+}
+
+/** Imagem ou GIF guardado no armazenamento da página do servidor. */
+export interface PageMediaItem {
+  id: string
+  url: string
+  kind: 'image' | 'gif'
+  bytes: number
+  created_at: string
+  uploaded_by_name: string | null
+  /** Está na página salva: tire do bloco e salve antes de apagar. */
+  in_use: boolean
 }
 
 export interface PlanOption {
@@ -444,6 +458,12 @@ export const api = {
   updateServer: (slug: string, body: unknown) => request<Server>('PATCH', `/v1/servers/${slug}`, body),
   page: (slug: string) => request<PageState>('GET', `/v1/servers/${slug}/page`),
   savePage: (slug: string, page: PageData) => request<PageState>('PUT', `/v1/servers/${slug}/page`, page),
+  /** Confere a página (com `pending:N` no lugar das imagens novas) antes de enviar os arquivos. */
+  checkPage: (slug: string, page: PageData, uploads: { bytes: number; gif: boolean }[]) =>
+    request<{ ok: boolean }>('POST', `/v1/servers/${slug}/page/check`, { page, uploads }),
+  pageMedia: (slug: string) => request<{ items: PageMediaItem[]; total_bytes: number }>('GET', `/v1/servers/${slug}/page/media`),
+  deletePageMedia: (slug: string, id: string) =>
+    request<{ ok: boolean; bytes: number; removed_from_disk: boolean }>('DELETE', `/v1/servers/${slug}/page/media/${id}`),
   versions: (slug: string) => request<VersionItem[]>('GET', `/v1/servers/${slug}/versions`),
   setChannel: (slug: string, channel: string, version: string) =>
     request<unknown>('PUT', `/v1/servers/${slug}/channels/${channel}`, { version }),
@@ -516,13 +536,16 @@ export const api = {
   updateSponsor: (id: string, input: SponsorInput) => request<null>('PUT', `/v1/staff/sponsors/${id}`, input),
   deleteSponsor: (id: string) => request<null>('DELETE', `/v1/staff/sponsors/${id}`),
   sponsorStats: (id: string) => request<{ days: SponsorDay[] }>('GET', `/v1/staff/sponsors/${id}/stats`),
-  waitlist: (status: WaitlistStatus) => request<WaitlistList>('GET', `/v1/staff/waitlist?status=${status}`),
+  waitlist: (status: WaitlistStatus, central = false) =>
+    request<WaitlistList>('GET', `/v1/staff/waitlist?status=${status}${central ? '&central=true' : ''}`),
   decideWaitlist: (id: string, status: WaitlistStatus, note?: string) =>
     request<WaitlistEntry>('POST', `/v1/staff/waitlist/${id}`, { status, note }),
-  approveNextWaitlist: (count: number) => request<{ approved: number }>('POST', '/v1/staff/waitlist/next', { count }),
+  approveNextWaitlist: (count: number, central = false) =>
+    request<{ approved: number }>('POST', '/v1/staff/waitlist/next', { count, central }),
   manualWaitlist: (nick: string) => request<{ nick: string; existing: boolean }>('POST', '/v1/staff/waitlist/manual', { nick }),
   setApproval: (slug: string, approval: string) => request<unknown>('POST', `/v1/staff/servers/${slug}/approval`, { approval }),
   setFeatured: (slug: string, until: string | null) => request<unknown>('POST', `/v1/staff/servers/${slug}/featured`, { until }),
+  setCentral: (slug: string, central: boolean) => request<unknown>('POST', `/v1/staff/servers/${slug}/central`, { central }),
   storage: () => request<StorageOverview>('GET', '/v1/staff/storage'),
   storageServer: (slug: string) => request<ServerStorage>('GET', `/v1/staff/storage/servers/${slug}`),
   deleteVersion: (slug: string, id: string) =>
@@ -584,6 +607,10 @@ export interface WaitlistEntry {
   created_at: string
   decided_at: string | null
   decided_by_name: string | null
+  /** Link de origem (`?ref=central`). */
+  ref?: string | null
+  /** Membro verificado da Central SMP's (lote da parceria). */
+  central_member?: boolean
 }
 
 export interface WaitlistList {
@@ -592,6 +619,10 @@ export interface WaitlistList {
   pending: number
   approved: number
   rejected: number
+  /** Aguardando e membros verificados da Central. */
+  central_pending?: number
+  /** Parceria com a Central configurada na API. */
+  central_enabled?: boolean
 }
 
 export function message(error: unknown): string {

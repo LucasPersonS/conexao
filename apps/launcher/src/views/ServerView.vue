@@ -14,9 +14,11 @@ import SupportCard from '../components/SupportCard.vue'
 import SponsorBanner from '../components/SponsorBanner.vue'
 import { isFull, slots, toggleSlotWatch } from '../lib/slots'
 import { api, errorMessage, LOADER_NAMES, pages, type InstallState, type ServerPage, type ServerSummary } from '../lib/api'
-import { accentColor, gradientCss, pageBackground } from '../lib/page'
+import { accentColor, gradientCss, gridColor, pageBackground, pageGrid } from '../lib/page'
 import { bgImage, formatBytes, formatNumber } from '../lib/format'
 import { go, store } from '../lib/store'
+
+import centralLogo from '../assets/central.webp'
 
 const props = defineProps<{ server: ServerSummary }>()
 
@@ -46,7 +48,11 @@ const live = computed(() => (page.value?.active ? page.value.page : null))
 const blocks = computed(() => live.value?.blocks ?? [])
 const accent = computed(() => accentColor(live.value?.theme))
 watch(() => gradientCss(live.value?.theme), (bg) => (pageBackground.value = bg), { immediate: true })
-onBeforeUnmount(() => (pageBackground.value = null))
+watch(() => gridColor(live.value?.theme), (grid) => (pageGrid.value = grid), { immediate: true })
+onBeforeUnmount(() => {
+  pageBackground.value = null
+  pageGrid.value = null
+})
 
 watch(
   () => props.server.slug,
@@ -98,6 +104,9 @@ async function copyAddress() {
           <div class="badges">
             <span v-if="server.featured" class="badge"><Icon name="star" :size="12" /> Destaque</span>
             <span v-if="server.pro" class="badge pro" title="Servidor com plano PRO">PRO</span>
+            <span v-if="server.central_partner" class="badge central" title="Servidor do programa SMP da Central (Central SMP's)">
+              <img :src="centralLogo" alt="" /> SMP da Central
+            </span>
           </div>
           <h1>{{ server.name }}</h1>
           <div class="meta">
@@ -320,6 +329,21 @@ async function copyAddress() {
   display: flex;
   gap: 6px;
   align-self: flex-start;
+}
+
+.badge.central {
+  gap: 6px;
+  padding: 2px 10px 2px 3px;
+  background: rgba(46, 140, 230, 0.9);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(59, 154, 232, 0.45);
+}
+
+.badge.central img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
 }
 
 .badge.pro {

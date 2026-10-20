@@ -8,7 +8,7 @@ import TitleBar from './components/TitleBar.vue'
 import TopNav from './components/TopNav.vue'
 import UpdateToast from './components/UpdateToast.vue'
 import logo from './assets/logo.png'
-import { api, errorMessage, type Account, type MyRoles } from './lib/api'
+import { api, errorMessage, profiles, type Account, type MyRoles } from './lib/api'
 import { prefs } from './lib/prefs'
 import { clearStars, loadStars } from './lib/stars'
 import { clearWallet, loadWallet } from './lib/wallet'
@@ -21,7 +21,7 @@ import ProfileView from './views/ProfileView.vue'
 import SettingsView from './views/SettingsView.vue'
 import StoreView from './views/StoreView.vue'
 import ProfileModal from './components/ProfileModal.vue'
-import { pageBackground } from './lib/page'
+import { pageBackground, pageGrid } from './lib/page'
 
 const ready = ref(false)
 const account = ref<Account | null>(null)
@@ -56,6 +56,8 @@ async function afterLogin() {
   // Aberto por um convite (conexao://servidor/<slug>)?
   api.takeInvite().then((slug) => slug && openInvite(slug)).catch(() => {})
   api.myRoles().then((r) => (roles.value = r)).catch(() => (roles.value = null))
+  // Selos do próprio perfil (Membro da Central, SMP da Central…) para o menu da conta.
+  profiles.mine().then((p) => (store.myBadges = p.badges)).catch(() => (store.myBadges = []))
 }
 
 async function login() {
@@ -112,6 +114,7 @@ async function logout() {
   await api.logout()
   account.value = null
   roles.value = null
+  store.myBadges = []
   clearStars()
   clearWallet()
   go('home')
@@ -170,7 +173,12 @@ onMounted(async () => {
     />
     <template v-else>
       <TopNav :account="account" :roles="roles" @pair="pairing = true" @token="copyToken" @logout="logout" />
-      <main ref="content" class="content grid-bg" :class="{ themed: !!pageBackground && store.view === 'server' }" :style="pageBackground && store.view === 'server' ? { '--page-bg': pageBackground } : undefined">
+      <main
+        ref="content"
+        class="content grid-bg"
+        :class="{ themed: !!pageBackground && store.view === 'server' }"
+        :style="pageBackground && store.view === 'server' ? { '--page-bg': pageBackground, ...(pageGrid ? { '--page-grid': pageGrid } : {}) } : undefined"
+      >
         <div class="page">
           <HomeView v-if="store.view === 'home'" />
           <BrowseView v-else-if="store.view === 'browse'" />
@@ -232,13 +240,19 @@ onMounted(async () => {
   background-attachment: local;
 }
 
-/* Página de servidor PRO com gradiente: o fundo fica parado e escurecido para o texto continuar legível. */
+/*
+ * Página de servidor PRO com gradiente: o gradiente fica parado e escurecido para o texto
+ * continuar legível, e a grade em quadrados do Conexão passa POR CIMA dele (rolando com a
+ * página), na cor que acompanha o tema escolhido (--page-grid, calculada em lib/page.ts).
+ */
 .content.themed {
   background-image:
+    linear-gradient(var(--page-grid, rgba(183, 254, 0, 0.05)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--page-grid, rgba(183, 254, 0, 0.05)) 1px, transparent 1px),
     linear-gradient(rgba(var(--shade), 0.15), rgba(var(--shade), 0.6)),
     var(--page-bg);
-  background-size: cover, cover;
-  background-attachment: scroll, scroll;
+  background-size: 44px 44px, 44px 44px, cover, cover;
+  background-attachment: local, local, scroll, scroll;
   transition: background-image 0.3s ease;
 }
 

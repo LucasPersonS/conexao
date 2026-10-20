@@ -3,8 +3,13 @@
  * Página personalizada do servidor (PRO): fundo em gradiente, cor de destaque e blocos
  * (texto, imagem/GIF, galeria e vídeo do YouTube) que aparecem no launcher, abaixo do
  * "Sobre o servidor". Quando o PRO vence, a página fica guardada aqui e volta ao renovar.
+ *
+ * Imagens novas ficam só no navegador (prévia local) até a pessoa salvar: aí o painel
+ * confere a página na API, envia os arquivos e grava. Nada sobe para o armazenamento do
+ * servidor só por escolher um arquivo. As imagens guardadas podem ser apagadas na seção
+ * "Imagens guardadas".
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   api,
@@ -15,10 +20,12 @@ import {
   youtubeId,
   type PageBlock,
   type PageData,
+  type PageMediaItem,
   type PageState,
   type PageTheme,
   type Server,
 } from '../lib/api'
+import { gridColor } from '../lib/grid'
 
 const props = defineProps<{ server: Server }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -49,8 +56,27 @@ const error = ref<string | null>(null)
 const saved = ref(false)
 const saving = ref(false)
 const dirty = ref(false)
-const uploading = ref<number | null>(null)
+/** Etapa do salvar ("Enviando 2 de 5 imagens…"). */
+const progress = ref<string | null>(null)
 let nextKey = 1
+
+/** Arquivos escolhidos e ainda não enviados: URL local (blob:) → arquivo. */
+const pendingFiles = new Map<string, File>()
+const pendingCount = ref(0)
+const isLocal = (url: string) => url.startsWith('blob:')
+
+function forgetPending() {
+  for (const url of pendingFiles.keys()) URL.revokeObjectURL(url)
+  pendingFiles.clear()
+  pendingCount.value = 0
+}
+onBeforeUnmount(forgetPending)
+
+// Imagens guardadas no armazenamento da página.
+const media = ref<PageMediaItem[]>([])
+const mediaTotal = ref(0)
+const mediaError = ref<string | null>(null)
+const deleting = ref<string | null>(null)
 
 const form = reactive({
   useTheme: false,
@@ -65,12 +91,24 @@ const active = computed(() => !!state.value?.active)
 const canEdit = computed(() => !!state.value?.can_edit && (active.value || !!session.user?.is_staff))
 const usage = computed(() => state.value?.usage)
 
+async function loadMedia() {
+  mediaError.value = null
+  try {
+    const result = await api.pageMedia(props.server.slug)
+    media.value = result.items
+    mediaTotal.value = result.total_bytes
+  } catch (e) {
+    mediaError.value = message(e)
+  }
+}
+
 function fill(page: PageData) {
   form.useTheme = !!page.theme
   if (page.theme) form.theme = { ...page.theme, colors: [...page.theme.colors], style: page.theme.style ?? 'linear' }
   form.useAccent = !!page.theme?.accent
   if (page.theme?.accent) form.accent = page.theme.accent
   form.blocks = (page.blocks ?? []).map((b) => ({ ...(JSON.parse(JSON.stringify(b)) as PageBlock), key: nextKey++ }) as EditBlock)
+  forgetPending()
   dirty.value = false
 }
 
@@ -82,6 +120,7 @@ async function load() {
   } catch (e) {
     loadError.value = message(e)
   }
+  if (state.value?.can_edit) loadMedia()
 }
 onMounted(load)
 
@@ -91,6 +130,8 @@ function touch() {
 }
 
 // ------------------------------------------------------------------ tema
+
+const previewGrid = computed(() => (form.useTheme ? gridColor({ ...form.theme, accent: form.useAccent ? form.accent : null }) : null))
 
 const gradient = computed(() => {
   if (!form.useTheme) return null
@@ -151,31 +192,58 @@ function checkFile(file: File): string | null {
   return null
 }
 
-async function pick(event: Event, block: EditBlock) {
+/** Escolher arquivos: só cria a prévia local. O envio acontece ao salvar. */
+function pick(event: Event, block: EditBlock) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = ''
   if (!files.length) return
   error.value = null
-  uploading.value = block.key
+  for (const file of files) {
+    const problem = checkFile(file)
+    if (problem) {
+      error.value = `${file.name}: ${problem}`
+      return
+    }
+    if (block.type === 'gallery' && block.urls.length >= MAX_GALLERY) break
+    const url = URL.createObjectURL(file)
+    pendingFiles.set(url, file)
+    pendingCount.value = pendingFiles.size
+    if (block.type === 'image') block.url = url
+    else if (block.type === 'gallery') block.urls.push(url)
+    touch()
+  }
+}
+
+/** Reaproveita uma imagem já guardada (sem enviar de novo). */
+function useStored(item: PageMediaItem) {
+  if (form.blocks.length >= MAX_BLOCKS) return
+  form.blocks.push({ key: nextKey++, type: 'image', url: item.url, caption: '' })
+  touch()
+}
+
+/** Imagens do formulário que ainda não foram salvas (inclusive as guardadas recolocadas). */
+const usedInForm = computed(() => {
+  const urls = new Set<string>()
+  for (const b of form.blocks) {
+    if (b.type === 'image' && b.url) urls.add(b.url)
+    if (b.type === 'gallery') b.urls.forEach((u) => urls.add(u))
+  }
+  return urls
+})
+
+async function removeStored(item: PageMediaItem) {
+  if (item.in_use || usedInForm.value.has(item.url)) return
+  if (!window.confirm(`Apagar ${item.kind === 'gif' ? 'este GIF' : 'esta imagem'} (${mb(item.bytes)}) do armazenamento do servidor?`)) return
+  deleting.value = item.id
+  mediaError.value = null
   try {
-    for (const file of files) {
-      const problem = checkFile(file)
-      if (problem) throw new Error(`${file.name}: ${problem}`)
-      if (block.type === 'gallery' && block.urls.length >= MAX_GALLERY) break
-      const { url } = await uploadPageMedia(props.server.slug, file)
-      if (block.type === 'image') block.url = url
-      else if (block.type === 'gallery') block.urls.push(url)
-      touch()
-    }
+    await api.deletePageMedia(props.server.slug, item.id)
+    await loadMedia()
   } catch (e) {
-    error.value = message(e)
+    mediaError.value = message(e)
   } finally {
-    uploading.value = null
-    if (state.value) {
-      // Atualiza a contagem de envios do dia sem perder o que está sendo editado.
-      api.page(props.server.slug).then((s) => state.value && (state.value.usage = s.usage)).catch(() => {})
-    }
+    deleting.value = null
   }
 }
 
@@ -203,20 +271,55 @@ function payload(): PageData {
   return page
 }
 
+/** Troca as URLs da página (prévias locais → `pending:N` ou → URL enviada). */
+function mapImages(page: PageData, swap: (url: string) => string): PageData {
+  return {
+    ...page,
+    blocks: page.blocks?.map((b) =>
+      b.type === 'image' ? { ...b, url: swap(b.url) } : b.type === 'gallery' ? { ...b, urls: b.urls.map(swap) } : b,
+    ),
+  }
+}
+
 async function save() {
   error.value = problems()
   if (error.value) return
   saving.value = true
   saved.value = false
   try {
-    state.value = await api.savePage(props.server.slug, payload())
+    const page = payload()
+    // Prévias locais que estão na página, na ordem em que aparecem (cada arquivo uma vez).
+    const locals = [...usedInForm.value].filter((u) => isLocal(u) && pendingFiles.has(u))
+    const index = new Map(locals.map((u, i) => [u, i]))
+    if (locals.length) {
+      // 1) A API confere a página e o limite de envios ANTES de qualquer arquivo subir.
+      progress.value = 'Conferindo a página…'
+      await api.checkPage(
+        props.server.slug,
+        mapImages(page, (u) => (index.has(u) ? `pending:${index.get(u)}` : u)),
+        locals.map((u) => ({ bytes: pendingFiles.get(u)!.size, gif: pendingFiles.get(u)!.type === 'image/gif' })),
+      )
+      // 2) Só agora as imagens vão para o armazenamento do servidor.
+      const uploaded = new Map<string, string>()
+      for (const [i, u] of locals.entries()) {
+        progress.value = `Enviando ${i + 1} de ${locals.length} ${locals.length === 1 ? 'imagem' : 'imagens'}…`
+        const { url } = await uploadPageMedia(props.server.slug, pendingFiles.get(u)!)
+        uploaded.set(u, url)
+      }
+      progress.value = 'Salvando a página…'
+      state.value = await api.savePage(props.server.slug, mapImages(page, (u) => uploaded.get(u) ?? u))
+    } else {
+      state.value = await api.savePage(props.server.slug, page)
+    }
     fill(state.value.page)
     saved.value = true
     emit('changed')
+    loadMedia()
   } catch (e) {
     error.value = message(e)
   } finally {
     saving.value = false
+    progress.value = null
   }
 }
 
@@ -323,21 +426,29 @@ const mb = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString('pt-BR', {
                   <span v-if="!block.url">sem imagem</span>
                 </div>
                 <label class="btn btn-sm file">
-                  {{ uploading === block.key ? 'Enviando…' : block.url ? 'Trocar' : 'Enviar imagem ou GIF' }}
-                  <input type="file" :accept="TYPES.join(',')" :disabled="uploading !== null" @change="pick($event, block)" />
+                  {{ block.url ? 'Trocar' : 'Escolher imagem ou GIF' }}
+                  <input type="file" :accept="TYPES.join(',')" :disabled="saving" @change="pick($event, block)" />
                 </label>
+                <span v-if="block.url && isLocal(block.url)" class="pending-tag">Será enviada ao salvar</span>
               </div>
               <input v-model="block.caption" class="input" maxlength="140" placeholder="Legenda (opcional)" @input="touch" />
             </template>
 
             <template v-else-if="block.type === 'gallery'">
               <div class="gallery">
-                <div v-for="(url, j) in block.urls" :key="url + j" class="thumb" :style="{ backgroundImage: `url(&quot;${url}&quot;)` }">
+                <div
+                  v-for="(url, j) in block.urls"
+                  :key="url + j"
+                  class="thumb"
+                  :class="{ local: isLocal(url) }"
+                  :title="isLocal(url) ? 'Será enviada ao salvar' : undefined"
+                  :style="{ backgroundImage: `url(&quot;${url}&quot;)` }"
+                >
                   <button type="button" class="x" title="Tirar da galeria" @click="block.urls.splice(j, 1), touch()">×</button>
                 </div>
                 <label v-if="block.urls.length < MAX_GALLERY" class="thumb add file">
-                  {{ uploading === block.key ? 'Enviando…' : '+ imagens' }}
-                  <input type="file" multiple :accept="TYPES.join(',')" :disabled="uploading !== null" @change="pick($event, block)" />
+                  + imagens
+                  <input type="file" multiple :accept="TYPES.join(',')" :disabled="saving" @change="pick($event, block)" />
                 </label>
               </div>
               <input v-model="block.caption" class="input" maxlength="140" placeholder="Legenda (opcional)" @input="touch" />
@@ -364,6 +475,7 @@ const mb = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString('pt-BR', {
             <button type="button" class="btn btn-sm" :disabled="form.blocks.length >= MAX_BLOCKS" @click="addBlock('video')">+ Vídeo do YouTube</button>
           </div>
           <p class="hint muted">
+            As imagens escolhidas ficam só neste navegador até você salvar: nada é enviado antes disso.
             Imagens: PNG, JPEG ou WebP até 5 MB. GIF animado até 8 MB (no máximo 1600×1600).
             <template v-if="usage">
               Envios nas últimas 24 h: {{ usage.uploads_24h }}/{{ usage.max_uploads_24h }} ({{ mb(usage.bytes_24h) }} de {{ mb(usage.max_bytes_24h) }}).
@@ -371,19 +483,66 @@ const mb = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString('pt-BR', {
           </p>
         </section>
 
+        <section v-if="state.can_edit" class="card">
+          <h3>
+            Imagens guardadas
+            <span class="muted count">{{ media.length }} · {{ mb(mediaTotal) }}</span>
+          </h3>
+          <p class="muted hint">
+            Tudo o que já foi enviado para a página deste servidor. Apague o que não usa mais para liberar espaço. Imagens que
+            estão na página precisam sair do bloco (e você salvar) antes de serem apagadas.
+          </p>
+          <p v-if="mediaError" class="error">{{ mediaError }}</p>
+          <p v-else-if="!media.length" class="muted empty">Nenhuma imagem guardada ainda.</p>
+          <div v-else class="library">
+            <div v-for="item in media" :key="item.id" class="lib-item">
+              <div class="lib-thumb" :style="{ backgroundImage: `url(&quot;${item.url}&quot;)` }">
+                <span v-if="item.kind === 'gif'" class="lib-kind">GIF</span>
+                <span v-if="item.in_use" class="lib-use">Na página</span>
+                <span v-else-if="usedInForm.has(item.url)" class="lib-use draft">No rascunho</span>
+              </div>
+              <div class="lib-meta">
+                <span>{{ mb(item.bytes) }} · {{ formatDate(item.created_at) }}</span>
+                <span v-if="item.uploaded_by_name" class="muted">por {{ item.uploaded_by_name }}</span>
+              </div>
+              <div class="lib-actions">
+                <button type="button" class="btn btn-sm" :disabled="!canEdit || form.blocks.length >= MAX_BLOCKS" @click="useStored(item)">
+                  Usar
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-danger"
+                  :disabled="item.in_use || usedInForm.has(item.url) || deleting === item.id"
+                  :title="item.in_use ? 'Está na página: tire do bloco e salve antes' : 'Apagar do armazenamento'"
+                  @click="removeStored(item)"
+                >
+                  {{ deleting === item.id ? 'Apagando…' : 'Apagar' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div class="actions">
+          <span v-if="pendingCount && dirty" class="muted small">
+            {{ pendingCount }} {{ pendingCount === 1 ? 'imagem nova será enviada' : 'imagens novas serão enviadas' }} ao salvar
+          </span>
           <span v-if="state.updated_at && !dirty" class="muted small">Salvo em {{ formatDate(state.updated_at) }}</span>
           <span v-if="saved" class="ok">Página salva.</span>
           <span v-if="error" class="error">{{ error }}</span>
           <button type="button" class="btn btn-primary" :disabled="saving || !dirty" @click="save">
-            {{ saving ? 'Salvando…' : 'Salvar página' }}
+            {{ saving ? progress ?? 'Salvando…' : 'Salvar página' }}
           </button>
         </div>
       </fieldset>
 
       <aside class="preview-wrap">
         <span class="label">Prévia no launcher</span>
-        <div class="preview" :style="{ '--accent': previewAccent, ...(gradient ? { '--bg': gradient } : {}) }" :class="{ themed: !!gradient }">
+        <div
+          class="preview"
+          :style="{ '--accent': previewAccent, ...(gradient ? { '--bg': gradient } : {}), ...(previewGrid ? { '--grid': previewGrid } : {}) }"
+          :class="{ themed: !!gradient }"
+        >
           <div class="p-hero" :style="server.banner_url ? { backgroundImage: `url(&quot;${server.banner_url}&quot;)` } : undefined">
             <div class="p-icon" :style="server.icon_url ? { backgroundImage: `url(&quot;${server.icon_url}&quot;)` } : undefined" />
             <b>{{ server.name }}</b>
@@ -721,7 +880,89 @@ input[type='color'] {
 }
 
 .preview.themed {
-  background-image: linear-gradient(rgba(6, 10, 11, 0.15), rgba(6, 10, 11, 0.6)), var(--bg);
+  /* Igual ao launcher: grade em quadrados por cima do gradiente, na cor do tema. */
+  background-image:
+    linear-gradient(var(--grid, rgba(183, 254, 0, 0.05)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid, rgba(183, 254, 0, 0.05)) 1px, transparent 1px),
+    linear-gradient(rgba(6, 10, 11, 0.15), rgba(6, 10, 11, 0.6)),
+    var(--bg);
+  background-size: 22px 22px, 22px 22px, cover, cover;
+  background-attachment: local, local, scroll, scroll;
+}
+
+.pending-tag {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.thumb.local {
+  border: 2px dashed var(--warn);
+}
+
+.library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.lib-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+}
+
+.lib-thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border-radius: 8px;
+  background: var(--bg-input) center / cover;
+}
+
+.lib-kind,
+.lib-use {
+  position: absolute;
+  top: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.lib-kind {
+  left: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+}
+
+.lib-use {
+  right: 6px;
+  background: var(--lime);
+  color: var(--ink);
+}
+
+.lib-use.draft {
+  background: var(--warn);
+}
+
+.lib-meta {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.lib-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.lib-actions .btn {
+  flex: 1;
 }
 
 .p-hero {
