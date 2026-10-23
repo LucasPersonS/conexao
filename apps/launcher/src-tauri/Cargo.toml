@@ -23,7 +23,7 @@ dirs = { workspace = true }
 futures = { workspace = true }
 sha1_smol = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
-tokio = { workspace = true, features = ["fs", "time"] }
+tokio = { workspace = true, features = ["fs", "time", "macros", "io-util"] }
 tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }

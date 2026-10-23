@@ -11,14 +11,18 @@ use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use conexao_types::{FilePolicy, PackFile, PackManifest};
 use futures::StreamExt;
+use tokio::io::AsyncWriteExt;
 
 use crate::error::{CmdError, CmdResult};
 
-/// Downloads simultâneos.
+/// Downloads simultâneos (cada um na sua conexão HTTP/1.1, ver `ConexaoApi::downloads`).
 const PARALLEL: usize = 6;
+/// Tentativas por arquivo; a partir da segunda, continua de onde parou (Range).
+const ATTEMPTS: u32 = 5;
 
 #[derive(Debug, Default)]
 pub struct Plan<'a> {
@@ -98,7 +102,8 @@ pub async fn remove_files(instance_dir: &Path, paths: &[String]) {
 }
 
 /// Baixa os arquivos do plano, confere o SHA-1 e troca cada um de forma atômica.
-/// `progress(baixado, total)` é chamado a cada arquivo concluído.
+/// `progress(baixado, total)` é chamado várias vezes por segundo, em bytes, inclusive
+/// no meio de cada arquivo (antes só andava quando um arquivo inteiro terminava).
 pub async fn apply(
     http: &reqwest::Client,
     cdn: &str,
@@ -115,38 +120,177 @@ pub async fn apply(
     let mut tasks = futures::stream::iter(files.into_iter().map(|file| {
         let done = Arc::clone(&done);
         let (http, cdn, dir) = (http.clone(), cdn.to_string(), instance_dir.to_path_buf());
-        async move {
-            fetch_one(&http, &cdn, &dir, &file).await?;
-            Ok::<u64, CmdError>(done.fetch_add(file.size, Ordering::Relaxed) + file.size)
-        }
+        async move { fetch_with_retry(&http, &cdn, &dir, &file, &done).await }
     }))
     .buffer_unordered(PARALLEL);
-    while let Some(result) = tasks.next().await {
-        progress(result?, total);
+    let mut tick = tokio::time::interval(Duration::from_millis(250));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            next = tasks.next() => match next {
+                Some(result) => result?,
+                None => break,
+            },
+            _ = tick.tick() => progress(done.load(Ordering::Relaxed).min(total), total),
+        }
     }
     drop(tasks);
+    progress(total, total);
     remove_files(instance_dir, &plan.remove).await;
     Ok(())
 }
 
-async fn fetch_one(http: &reqwest::Client, cdn: &str, instance_dir: &Path, file: &PackFile) -> CmdResult<()> {
+/// Como terminou uma tentativa de baixar um arquivo.
+enum Attempt {
+    /// Conexão caiu, servidor ocupado etc.: tenta de novo (continuando de onde parou).
+    Retry(String),
+    /// Chegou diferente do manifesto: apaga o parcial e baixa do zero.
+    Corrupt,
+    /// Não adianta tentar de novo (arquivo não existe no servidor, disco cheio...).
+    Fatal(CmdError),
+}
+
+/// Arquivo parcial ao lado do destino. O SHA-1 no nome garante que um parcial de outra
+/// versão do mesmo mod nunca seja continuado.
+fn partial_path(target: &Path, sha1: &str) -> PathBuf {
+    let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let short = sha1.get(..12).unwrap_or(sha1);
+    target.with_file_name(format!("{name}.{short}.conexao-tmp"))
+}
+
+async fn fetch_with_retry(
+    http: &reqwest::Client,
+    cdn: &str,
+    instance_dir: &Path,
+    file: &PackFile,
+    done: &AtomicU64,
+) -> CmdResult<()> {
     let target = safe_join(instance_dir, &file.path).ok_or_else(|| CmdError::new("caminho inválido no modpack"))?;
-    let url = PackManifest::file_url(file, cdn);
-    let bytes = http.get(&url).send().await?.error_for_status()?.bytes().await?;
-    let sha1 = sha1_smol::Sha1::from(&bytes).hexdigest();
-    if bytes.len() as u64 != file.size || !sha1.eq_ignore_ascii_case(&file.sha1) {
-        return Err(CmdError::new(format!("O arquivo {} veio corrompido. Tente de novo.", file.path)));
-    }
     if let Some(parent) = target.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    // Escreve ao lado e renomeia: nunca altera o conteúdo de um arquivo que o theseus
-    // possa ter ligado (hard link) ao seu repositório de conteúdo.
-    let tmp = target.with_extension("conexao-tmp");
-    tokio::fs::write(&tmp, &bytes).await?;
-    if let Err(error) = tokio::fs::rename(&tmp, &target).await {
-        let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(error.into());
+    let url = PackManifest::file_url(file, cdn);
+    let partial = partial_path(&target, &file.sha1);
+    let mut last = String::new();
+    for attempt in 0..ATTEMPTS {
+        if attempt > 0 {
+            // 2 s, 4 s, 8 s, 16 s: dá tempo de uma queda rápida de internet voltar.
+            tokio::time::sleep(Duration::from_secs(1 << attempt.min(4))).await;
+        }
+        // Bytes que esta tentativa somou ao progresso: saem de volta se ela falhar.
+        let mut counted = 0u64;
+        let outcome = fetch_once(http, &url, &partial, file, done, &mut counted).await;
+        if outcome.is_err() {
+            done.fetch_sub(counted, Ordering::Relaxed);
+        }
+        match outcome {
+            Ok(()) => {
+                // Escreve ao lado e renomeia: nunca altera o conteúdo de um arquivo que o
+                // theseus possa ter ligado (hard link) ao seu repositório de conteúdo.
+                if let Err(error) = tokio::fs::rename(&partial, &target).await {
+                    let _ = tokio::fs::remove_file(&partial).await;
+                    return Err(error.into());
+                }
+                return Ok(());
+            }
+            Err(Attempt::Retry(reason)) => {
+                tracing::warn!(path = %file.path, attempt, "download falhou, tentando de novo: {reason}");
+                last = reason;
+            }
+            Err(Attempt::Corrupt) => {
+                tracing::warn!(path = %file.path, attempt, "arquivo veio diferente do manifesto");
+                let _ = tokio::fs::remove_file(&partial).await;
+                last = "arquivo corrompido".into();
+            }
+            Err(Attempt::Fatal(error)) => return Err(error),
+        }
+    }
+    tracing::warn!(path = %file.path, "desistindo do download: {last}");
+    Err(CmdError::new(format!(
+        "A conexão caiu várias vezes ao baixar {}. Verifique sua internet e clique de novo: \
+         o download continua de onde parou.",
+        file.path
+    )))
+}
+
+async fn fetch_once(
+    http: &reqwest::Client,
+    url: &str,
+    partial: &Path,
+    file: &PackFile,
+    done: &AtomicU64,
+    counted: &mut u64,
+) -> Result<(), Attempt> {
+    let io = |error: std::io::Error| Attempt::Fatal(error.into());
+    let net = |error: reqwest::Error| Attempt::Retry(error.to_string());
+
+    // O que já chegou numa tentativa anterior (ou num clique anterior em "Jogar").
+    let mut hasher = sha1_smol::Sha1::new();
+    let mut have = 0u64;
+    if let Ok(existing) = tokio::fs::read(partial).await
+        && !existing.is_empty()
+        && (existing.len() as u64) < file.size
+    {
+        hasher.update(&existing);
+        have = existing.len() as u64;
+    }
+
+    let mut request = http.get(url);
+    if have > 0 {
+        request = request.header(reqwest::header::RANGE, format!("bytes={have}-"));
+    }
+    let mut response = request.send().await.map_err(net)?;
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(Attempt::Fatal(CmdError::new(format!(
+            "O arquivo {} não está disponível no Conexão. Avise a equipe do servidor.",
+            file.path
+        ))));
+    }
+    if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+        // Parcial maior/estranho: recomeça do zero.
+        return Err(Attempt::Corrupt);
+    }
+    if !status.is_success() {
+        return Err(Attempt::Retry(format!("HTTP {status}")));
+    }
+    let resumed = have > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT;
+    if !resumed {
+        // O servidor mandou o arquivo inteiro: descarta o parcial.
+        hasher = sha1_smol::Sha1::new();
+        have = 0;
+    }
+
+    let out = if resumed {
+        tokio::fs::OpenOptions::new().append(true).open(partial).await.map_err(io)?
+    } else {
+        tokio::fs::File::create(partial).await.map_err(io)?
+    };
+    let mut out = tokio::io::BufWriter::with_capacity(256 * 1024, out);
+    done.fetch_add(have, Ordering::Relaxed);
+    *counted += have;
+
+    // Mesmo em erro de rede, o que já foi recebido fica salvo para a próxima tentativa.
+    let received = async {
+        while let Some(chunk) = response.chunk().await.map_err(net)? {
+            have += chunk.len() as u64;
+            if have > file.size {
+                return Err(Attempt::Corrupt);
+            }
+            hasher.update(&chunk);
+            out.write_all(&chunk).await.map_err(io)?;
+            done.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+            *counted += chunk.len() as u64;
+        }
+        Ok(())
+    }
+    .await;
+    out.flush().await.map_err(io)?;
+    drop(out);
+    received?;
+
+    if have != file.size || !hasher.digest().to_string().eq_ignore_ascii_case(&file.sha1) {
+        return Err(Attempt::Corrupt);
     }
     Ok(())
 }

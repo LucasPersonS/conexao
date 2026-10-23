@@ -197,7 +197,7 @@ async fn run_play(app: tauri::AppHandle, ctx: Arc<AppContext>, slug: String, add
                     n => format!("Baixando {n} arquivos novos"),
                 };
                 tracing::info!(slug, count, removed = plan.remove.len(), "atualização diferencial");
-                delta::apply(ctx.api.http(), ctx.api.base(), dir, &plan, |current, total| {
+                delta::apply(ctx.api.downloads(), ctx.api.base(), dir, &plan, |current, total| {
                     tracker.progress.insert(
                         slug.clone(),
                         PlayProgress { stage: Stage::Installing, message: message.clone(), current, total, step: 3 },

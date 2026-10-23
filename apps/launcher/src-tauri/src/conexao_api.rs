@@ -44,6 +44,8 @@ pub fn verify_manifest(public_key: Option<&str>, body: &[u8], signature: Option<
 pub struct ConexaoApi {
     base: String,
     http: reqwest::Client,
+    /// Cliente só para baixar arquivos do modpack (sem limite de tempo total).
+    downloads: reqwest::Client,
     token: Mutex<Option<String>>,
     /// Pasta de dados do launcher (definida no `setup` do Tauri).
     data_dir: OnceLock<PathBuf>,
@@ -145,9 +147,29 @@ impl ConexaoApi {
             .https_only(!cfg!(debug_assertions))
             .build()
             .unwrap_or_default();
+        // Downloads de mods: um mod grande numa internet lenta passa fácil de 60 s, então aqui
+        // não há limite total, só de silêncio (30 s sem receber nada = conexão caiu).
+        // HTTP/1.1: cada arquivo numa conexão TCP própria. Com HTTP/2 os downloads paralelos
+        // dividem uma conexão só, o que fica bem mais lento com a latência Brasil -> VPS.
+        // Sem compressão: os .jar já são zip, e o Range (continuar de onde parou) precisa dos
+        // bytes exatos do arquivo.
+        let downloads = reqwest::Client::builder()
+            .user_agent(concat!("Conexao-Launcher/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(30))
+            .http1_only()
+            .no_gzip()
+            .no_brotli()
+            .no_zstd()
+            .no_deflate()
+            .tcp_keepalive(Duration::from_secs(30))
+            .https_only(!cfg!(debug_assertions))
+            .build()
+            .unwrap_or_default();
         Self {
             base: base.trim_end_matches('/').to_string(),
             http,
+            downloads,
             token: Mutex::new(None),
             data_dir: OnceLock::new(),
             offline: Mutex::new(None),
@@ -243,6 +265,11 @@ impl ConexaoApi {
 
     pub fn http(&self) -> &reqwest::Client {
         &self.http
+    }
+
+    /// Cliente para baixar arquivos do modpack (ver `from_env`).
+    pub fn downloads(&self) -> &reqwest::Client {
+        &self.downloads
     }
 
     pub fn base(&self) -> &str {
