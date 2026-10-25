@@ -13,7 +13,8 @@ import {
   api,
   formatBytes,
   message,
-  sha1Hex,
+  formatDuration,
+  sha1All,
   uploadFile,
   type Loader,
   type PlanFileInfo,
@@ -127,13 +128,11 @@ async function analyze() {
   try {
     const local = pack.value.files
     // 1. Hash no navegador
-    let done = 0
-    for (const p of local) {
-      if (!p.sha1) p.sha1 = await sha1Hex(p.file)
-      done++
-      progress.value = done / Math.max(local.length, 1)
-      progressText.value = `Identificando arquivos (${done}/${local.length})`
-    }
+    progressText.value = `Identificando arquivos (0/${local.length})`
+    await sha1All(local, (done, total) => {
+      progress.value = done / Math.max(total, 1)
+      progressText.value = `Identificando arquivos (${done}/${total})`
+    })
     // 2. Modrinth reconhece o que puder; envia só o resto
     const unique = [...new Set(local.map((p) => p.sha1 as string))]
     progressText.value = 'Procurando os mods no Modrinth…'
@@ -142,15 +141,39 @@ async function analyze() {
     const sendBytes = toSend.reduce((sum, p) => sum + p.file.size, 0)
     let sent = 0
     let sentBytes = 0
+    // Bytes já enviados de cada arquivo em andamento: a barra anda durante o envio,
+    // não só quando um arquivo inteiro termina.
+    const inFlight = new Map<object, number>()
+    const started = performance.now()
+    let lastPaint = 0
+    const report = (force = false) => {
+      const now = performance.now()
+      if (!force && now - lastPaint < 200) return
+      lastPaint = now
+      let current = sentBytes
+      for (const bytes of inFlight.values()) current += bytes
+      current = Math.min(current, sendBytes)
+      progress.value = sendBytes ? current / sendBytes : 1
+      const seconds = (now - started) / 1000
+      const speed = seconds >= 2 ? current / seconds : 0
+      const rate = speed ? ` · ${formatBytes(speed)}/s` : ''
+      const eta = speed && current < sendBytes ? ` · falta ~${formatDuration((sendBytes - current) / speed)}` : ''
+      progressText.value = `Enviando arquivos próprios (${sent}/${toSend.length} · ${formatBytes(current)} de ${formatBytes(sendBytes)}${rate}${eta})`
+    }
     progress.value = 0
     const queue = [...toSend]
     const worker = async () => {
       for (let item = queue.shift(); item; item = queue.shift()) {
-        await uploadFile(item.sha1 as string, item.file)
+        const key = item
+        inFlight.set(key, 0)
+        await uploadFile(item.sha1 as string, item.file, (bytes) => {
+          inFlight.set(key, bytes)
+          report()
+        })
+        inFlight.delete(key)
         sent++
         sentBytes += item.file.size
-        progress.value = sendBytes ? sentBytes / sendBytes : 1
-        progressText.value = `Enviando arquivos próprios (${sent}/${toSend.length} · ${formatBytes(sentBytes)} de ${formatBytes(sendBytes)})`
+        report(true)
       }
     }
     progressText.value = toSend.length ? 'Enviando arquivos próprios…' : 'Nada para enviar: tudo já estava no Modrinth ou no Conexão'

@@ -275,7 +275,10 @@ enum ReceiveError {
 
 /// Grava o corpo em `tmp` calculando o SHA-1, parando ao passar de `limit` bytes.
 async fn receive(body: Body, tmp: &std::path::Path, limit: u64) -> Result<Received, ReceiveError> {
-    let mut file = tokio::fs::File::create(tmp).await.map_err(ReceiveError::Io)?;
+    // Buffer de 1 MB: o corpo chega em pedaços de poucos KB, e gravar cada um direto no
+    // disco (uma ida ao pool de threads por pedaço) deixava o recebimento lento.
+    let file = tokio::fs::File::create(tmp).await.map_err(ReceiveError::Io)?;
+    let mut file = tokio::io::BufWriter::with_capacity(1 << 20, file);
     let mut hasher = sha1_smol::Sha1::new();
     let mut size: u64 = 0;
     let mut stream = body.into_data_stream();
@@ -288,6 +291,7 @@ async fn receive(body: Body, tmp: &std::path::Path, limit: u64) -> Result<Receiv
         hasher.update(&chunk);
         file.write_all(&chunk).await.map_err(ReceiveError::Io)?;
     }
-    file.sync_all().await.map_err(ReceiveError::Io)?;
+    file.flush().await.map_err(ReceiveError::Io)?;
+    file.get_ref().sync_all().await.map_err(ReceiveError::Io)?;
     Ok(Received { size, sha1: hasher.digest().to_string() })
 }

@@ -23,3 +23,6 @@ deploy/.github-token
 Claude outputs/
 deploy/.ultimo-deploy
 _to_delete/
+
+# Saída do lancar-versao-local.ps1
+release-v*/

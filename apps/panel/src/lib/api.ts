@@ -634,22 +634,54 @@ export function formatDate(value: string | null): string {
   return new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-/** Envia o conteúdo bruto de um arquivo (o SHA-1 é conferido pela API). */
-export async function uploadFile(sha1: string, file: Blob): Promise<void> {
-  let response: Response
-  try {
-    response = await fetch(`${API_URL}/v1/files/${sha1}`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${session.token ?? ''}`, 'Content-Type': 'application/octet-stream' },
-      body: file,
-    })
-  } catch {
-    throw new ApiError('Falha de rede ao enviar um arquivo.', 0)
+/**
+ * Envia o conteúdo bruto de um arquivo (o SHA-1 é conferido pela API).
+ *
+ * Usa XMLHttpRequest porque o `fetch` não informa o progresso do envio: com ele a barra
+ * só andava quando um arquivo inteiro terminava e parecia travada nos mods grandes.
+ * `onProgress(bytes)` recebe quanto deste arquivo já foi enviado (volta a 0 se precisar
+ * reenviar). Quedas de rede e erros do servidor são tentados de novo algumas vezes.
+ */
+export async function uploadFile(sha1: string, file: Blob, onProgress?: (sent: number) => void): Promise<void> {
+  const attempts = 4
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await uploadOnce(sha1, file, onProgress)
+      return
+    } catch (e) {
+      onProgress?.(0)
+      const retry = e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500)
+      if (!retry || attempt >= attempts) throw e
+      await new Promise((r) => setTimeout(r, 2000 * attempt))
+    }
   }
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    throw new ApiError(data?.message ?? `Erro ${response.status} ao enviar arquivo`, response.status)
-  }
+}
+
+function uploadOnce(sha1: string, file: Blob, onProgress?: (sent: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', `${API_URL}/v1/files/${sha1}`)
+    xhr.setRequestHeader('Authorization', `Bearer ${session.token ?? ''}`)
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    xhr.upload.onprogress = (event) => onProgress?.(event.loaded)
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(file.size)
+        resolve()
+        return
+      }
+      let data: { message?: string } | null = null
+      try {
+        data = JSON.parse(xhr.responseText)
+      } catch {
+        // resposta sem JSON (ex.: proxy)
+      }
+      reject(new ApiError(data?.message ?? `Erro ${xhr.status} ao enviar arquivo`, xhr.status))
+    }
+    xhr.onerror = () => reject(new ApiError('Falha de rede ao enviar um arquivo.', 0))
+    xhr.onabort = () => reject(new ApiError('Envio cancelado.', 0))
+    xhr.send(file)
+  })
 }
 
 export type SponsorPlacement = 'home' | 'server' | 'loading'
@@ -765,6 +797,37 @@ export async function sha1Hex(file: Blob): Promise<string> {
   if (!crypto?.subtle) throw new Error('Abra o painel por HTTPS para calcular os hashes dos arquivos.')
   const digest = await crypto.subtle.digest('SHA-1', await file.arrayBuffer())
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * Calcula o SHA-1 de vários arquivos, alguns ao mesmo tempo (antes era um por vez).
+ * `onProgress(prontos, total)` é chamado a cada arquivo concluído.
+ */
+export async function sha1All(
+  files: { file: Blob; sha1?: string | null }[],
+  onProgress?: (done: number, total: number) => void,
+  parallel = 4,
+): Promise<void> {
+  let done = 0
+  let next = 0
+  const worker = async () => {
+    while (next < files.length) {
+      const item = files[next++]
+      if (!item.sha1) item.sha1 = await sha1Hex(item.file)
+      done++
+      onProgress?.(done, files.length)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(parallel, files.length) }, worker))
+}
+
+/** "45 s", "3 min", "1 h 20 min". */
+export function formatDuration(seconds: number): string {
+  const s = Math.max(1, Math.round(seconds))
+  if (s < 60) return `${s} s`
+  const m = Math.round(s / 60)
+  if (m < 60) return `${m} min`
+  return `${Math.floor(m / 60)} h ${m % 60} min`
 }
 
 /** Um JAR do Conexão Companion (um por versão do Minecraft × loader). */

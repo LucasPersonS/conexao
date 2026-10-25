@@ -15,7 +15,7 @@ import {
   loadSession,
   message,
   dataUrlToBlob,
-  sha1Hex,
+  sha1All,
   uploadImage,
   type DetectedServer,
   type LinkView,
@@ -129,11 +129,9 @@ async function onFiles(files: InputFile[]) {
 
     // Hash dos mods para reconhecer no Modrinth (o mesmo hash é reaproveitado na publicação).
     const jars = result.files.filter((f) => f.path.startsWith('mods/'))
-    for (let i = 0; i < result.files.length; i++) {
-      const f = result.files[i]
-      f.sha1 ??= await sha1Hex(f.file)
-      analyzing.value = `Identificando arquivos (${i + 1}/${result.files.length})`
-    }
+    await sha1All(result.files, (done, total) => {
+      analyzing.value = `Identificando arquivos (${done}/${total})`
+    })
     const hashes = [...new Set(result.files.map((f) => f.sha1 as string))]
     const resolved: Record<string, ResolvedFile> = hashes.length ? (await api.resolveFiles(hashes)).resolved : {}
     modrinthCount.value = result.files.filter((f) => resolved[f.sha1 as string]).length + result.external.length
